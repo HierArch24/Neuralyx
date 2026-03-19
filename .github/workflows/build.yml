@@ -19,16 +19,16 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Deploy to cPanel via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ftp.dev-environment.site
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./dist/
-          server-dir: ./
-          exclude: |
-            .ftpquota
-            .git*
-            .git*/**
-            assets/videos/**
+      - name: Deploy to cPanel via rsync
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p 27015 dev-environment.site >> ~/.ssh/known_hosts 2>/dev/null
+
+          rsync -avz --delete \
+            --exclude='assets/videos/' \
+            -e "ssh -i ~/.ssh/deploy_key -p 27015 -o StrictHostKeyChecking=no" \
+            ./dist/ devenvir@dev-environment.site:/home/devenvir/neuralyx.ai.dev-environment.site/
