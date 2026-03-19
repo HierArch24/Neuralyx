@@ -22,6 +22,7 @@ jobs:
       - name: Deploy to cPanel via rsync
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_PATH: /home/devenvir/neuralyx.ai.dev-environment.site/
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
@@ -31,4 +32,4 @@ jobs:
           rsync -avz --delete \
             --exclude='assets/videos/' \
             -e "ssh -i ~/.ssh/deploy_key -p 27015 -o StrictHostKeyChecking=no" \
-            ./dist/ devenvir@dev-environment.site:/home/devenvir/neuralyx.ai.dev-environment.site/
+            ./dist/ devenvir@dev-environment.site:$DEPLOY_PATH
