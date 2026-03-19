@@ -1,0 +1,8 @@
+---
+deployment:
+  tasks:
+    - /bin/mkdir -p /home/devenvir/neuralyx.ai.dev-environment.site/NEURALYX/assets
+    - /bin/cp -f /home/devenvir/neuralyx.ai.dev-environment.site/dist/index.html /home/devenvir/neuralyx.ai.dev-environment.site/NEURALYX/index.html
+    - /bin/cp -rf /home/devenvir/neuralyx.ai.dev-environment.site/dist/assets/* /home/devenvir/neuralyx.ai.dev-environment.site/NEURALYX/assets/
+    - /bin/cp -f /home/devenvir/neuralyx.ai.dev-environment.site/dist/.htaccess /home/devenvir/neuralyx.ai.dev-environment.site/NEURALYX/.htaccess 2>/dev/null; true
+    - /bin/touch /home/devenvir/neuralyx.ai.dev-environment.site/tmp/restart.txt
