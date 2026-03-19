@@ -1,1 +1,0 @@
-var e=`/assets/images/neuralyx-logo.jpg`;export{e as t};

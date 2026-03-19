@@ -8,11 +8,15 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+dist
 dist-ssr
 *.local
 .env
 .env.local
 .env.*.local
+
+# Large video assets (already on cPanel)
+public/assets/videos/
 
 # Editor directories and files
 .vscode/*
