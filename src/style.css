@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  /* NEURALYX Color System */
+  --color-neural-900: #0a0a12;
+  --color-neural-800: #12121f;
+  --color-neural-700: #1a1a2e;
+  --color-neural-600: #252540;
+  --color-neural-500: #353560;
+
+  --color-cyber-purple: #8b5cf6;
+  --color-cyber-blue: #06b6d4;
+  --color-cyber-cyan: #22d3ee;
+  --color-cyber-pink: #ec4899;
+
+  --color-angelic-gold: #f59e0b;
+  --color-angelic-light: #fbbf24;
+  --color-angelic-white: #fefce8;
+  --color-angelic-cream: #fffbeb;
+
+  --color-transition-purple: #a78bfa;
+  --color-transition-gold: #d97706;
+
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-display: 'Orbitron', 'Inter', sans-serif;
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--color-neural-900);
+  color: white;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-neural-900);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-cyber-purple);
+  border-radius: 3px;
+}
+
+/* Utility classes */
+.text-gradient-cyber {
+  background: linear-gradient(135deg, var(--color-cyber-purple), var(--color-cyber-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-angelic {
+  background: linear-gradient(135deg, var(--color-angelic-gold), var(--color-angelic-light));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glass-dark {
+  background: rgba(10, 10, 18, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}

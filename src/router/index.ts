@@ -1,0 +1,53 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const router = createRouter({
+  history: createWebHistory(),
+  scrollBehavior(to, _from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.hash) return { el: to.hash, behavior: 'smooth' }
+    return { top: 0 }
+  },
+  routes: [
+    {
+      path: '/',
+      component: () => import('@/layouts/DefaultLayout.vue'),
+      children: [
+        { path: '', name: 'home', component: () => import('@/views/LandingPage.vue') },
+        { path: 'projects', name: 'projects', component: () => import('@/views/ProjectShowcase.vue') },
+        { path: 'skills', name: 'skills', component: () => import('@/views/SkillsDetail.vue') },
+        { path: 'tools', name: 'tools', component: () => import('@/views/ToolsIUse.vue') },
+      ],
+    },
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/admin/LoginPage.vue'),
+    },
+    {
+      path: '/admin',
+      component: () => import('@/layouts/AdminLayout.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        { path: '', name: 'admin-dashboard', component: () => import('@/views/admin/Dashboard.vue') },
+        { path: 'projects', name: 'admin-projects', component: () => import('@/views/admin/Projects.vue') },
+        { path: 'skills', name: 'admin-skills', component: () => import('@/views/admin/Skills.vue') },
+        { path: 'tools', name: 'admin-tools', component: () => import('@/views/admin/Tools.vue') },
+        { path: 'sections', name: 'admin-sections', component: () => import('@/views/admin/Sections.vue') },
+        { path: 'messages', name: 'admin-messages', component: () => import('@/views/admin/Messages.vue') },
+      ],
+    },
+  ],
+})
+
+router.beforeEach(async (to) => {
+  if (to.meta.requiresAuth) {
+    const auth = useAuthStore()
+    await auth.initialize()
+    if (!auth.isAuthenticated) {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+  }
+})
+
+export default router
