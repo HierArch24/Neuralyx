@@ -15,6 +15,7 @@ const stats = ref({
 })
 
 onMounted(async () => {
+  // Load OpenAI key from localStorage (set via admin dashboard settings)
   try {
     await Promise.all([
       admin.fetchProjects(),
@@ -74,9 +75,33 @@ const totalContent = computed(() =>
 // Introduction Video Management
 const introVideoUrl = ref(localStorage.getItem('neuralyx_intro_video') || '/assets/videos/Introduction_video.mp4')
 const editingIntro = ref(false)
+const videoDragging = ref(false)
+const uploadingVideo = ref(false)
 
 function saveIntroVideo() {
   localStorage.setItem('neuralyx_intro_video', introVideoUrl.value)
+  editingIntro.value = false
+}
+
+function handleVideoDrop(e: DragEvent) {
+  videoDragging.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (file && file.type.startsWith('video/')) processVideoFile(file)
+}
+
+function handleVideoSelect(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (file) processVideoFile(file)
+}
+
+function processVideoFile(file: File) {
+  uploadingVideo.value = true
+  const url = URL.createObjectURL(file)
+  introVideoUrl.value = url
+  // Save filename for display, actual blob stays in memory for this session
+  localStorage.setItem('neuralyx_intro_video', `/assets/videos/${file.name}`)
+  localStorage.setItem('neuralyx_intro_video_blob', url)
+  uploadingVideo.value = false
   editingIntro.value = false
 }
 
@@ -207,13 +232,30 @@ function saveOpenAIKey() {
           <!-- Info / Edit -->
           <div class="p-4">
             <div v-if="editingIntro" class="space-y-3">
-              <div>
-                <label class="block text-[10px] text-gray-500 uppercase mb-1">Video URL / Path</label>
-                <input v-model="introVideoUrl"
-                  class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none"
-                  placeholder="/assets/videos/vid-t.mp4" />
+              <!-- Drop zone for video -->
+              <div
+                class="rounded-xl border-2 border-dashed transition-colors cursor-pointer"
+                :class="videoDragging ? 'border-cyber-purple bg-cyber-purple/5' : 'border-white/10 hover:border-white/20'"
+                @dragover.prevent="videoDragging = true"
+                @dragleave="videoDragging = false"
+                @drop.prevent="handleVideoDrop"
+                @click="($refs.videoFileInput as HTMLInputElement)?.click()"
+              >
+                <div class="p-6 text-center">
+                  <svg class="w-8 h-8 text-white/20 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                  <p class="text-xs text-white/40">Drop a video file here or click to browse</p>
+                  <p class="text-[10px] text-white/20 mt-1">MP4, WebM, MOV supported</p>
+                </div>
               </div>
-              <p class="text-[10px] text-gray-500">This video displays on the landing page hero section. Place video files in <code class="text-cyber-cyan">public/assets/videos/</code></p>
+              <input ref="videoFileInput" type="file" accept="video/*" class="hidden" @change="handleVideoSelect" />
+
+              <!-- Or manual URL -->
+              <div>
+                <label class="block text-[10px] text-gray-500 uppercase mb-1">Or enter video path manually</label>
+                <input v-model="introVideoUrl"
+                  class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none"
+                  placeholder="/assets/videos/Introduction_video.mp4" />
+              </div>
               <div class="flex gap-2">
                 <button @click="saveIntroVideo"
                   class="px-4 py-2 text-xs rounded-lg font-medium text-white"
