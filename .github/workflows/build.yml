@@ -45,7 +45,7 @@ jobs:
           ssh-keyscan -p 27015 dev-environment.site >> ~/.ssh/known_hosts 2>/dev/null
 
           rsync -avz --delete \
-            --exclude='assets/videos' \
-            --exclude='assets/videos/**' \
+            --filter='protect assets/videos/***' \
+            --exclude='assets/videos/' \
             -e "ssh -i ~/.ssh/deploy_key -p 27015 -o StrictHostKeyChecking=no" \
             ./dist/ devenvir@dev-environment.site:$DEPLOY_PATH
