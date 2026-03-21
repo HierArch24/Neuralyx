@@ -79,6 +79,18 @@ function saveIntroVideo() {
   localStorage.setItem('neuralyx_intro_video', introVideoUrl.value)
   editingIntro.value = false
 }
+
+// OpenAI Key
+const openaiKey = ref(localStorage.getItem('neuralyx_openai_key') || '')
+const showKeyInput = ref(false)
+const keySaved = ref(false)
+
+function saveOpenAIKey() {
+  localStorage.setItem('neuralyx_openai_key', openaiKey.value)
+  showKeyInput.value = false
+  keySaved.value = true
+  setTimeout(() => { keySaved.value = false }, 2000)
+}
 </script>
 
 <template>
@@ -256,6 +268,29 @@ function saveIntroVideo() {
           >
             Git Nexus
           </RouterLink>
+        </div>
+
+        <!-- OpenAI API Key -->
+        <div class="mt-4 pt-4 border-t border-neural-600">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-400">OpenAI API Key (for Validate Need AI)</span>
+              <span v-if="openaiKey" class="text-[10px] px-2 py-0.5 bg-green-500/10 text-green-400 rounded-full">Connected</span>
+              <span v-else class="text-[10px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded-full">Not set</span>
+            </div>
+            <button @click="showKeyInput = !showKeyInput" class="text-xs text-cyber-cyan hover:text-white transition-colors">
+              {{ showKeyInput ? 'Cancel' : (openaiKey ? 'Update' : 'Set Key') }}
+            </button>
+          </div>
+          <div v-if="showKeyInput" class="flex gap-2 mt-2">
+            <input v-model="openaiKey" type="password" placeholder="sk-proj-..."
+              class="flex-1 px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none" />
+            <button @click="saveOpenAIKey" class="px-4 py-2 text-xs rounded-lg font-medium text-white"
+              style="background: linear-gradient(135deg, var(--color-cyber-purple), var(--color-cyber-blue));">
+              Save
+            </button>
+          </div>
+          <p v-if="keySaved" class="text-[10px] text-green-400 mt-1">Key saved to local storage</p>
         </div>
       </div>
     </template>
