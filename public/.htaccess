@@ -2,19 +2,30 @@
   RewriteEngine On
   RewriteBase /
 
+  # Skip rewrite for actual files and directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Skip rewrite for asset files (videos, images, fonts, etc.)
+  RewriteRule \.(mp4|webm|mov|jpg|jpeg|png|gif|svg|ico|woff2?|ttf|eot|pdf|css|js|json|wasm)$ - [L]
+
   # GitNexus sub-app routing
   RewriteCond %{REQUEST_URI} ^/gitnexus/
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^gitnexus/(.*)$ /gitnexus/index.html [L]
 
-  # SPA routing - serve index.html for non-file requests
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule . /index.html [L]
+  # SPA routing - everything else goes to index.html
+  RewriteRule ^ /index.html [L]
 </IfModule>
 
-# Gzip compression
+# Proper MIME types
+AddType video/mp4 .mp4
+AddType video/webm .webm
+AddType video/ogg .ogv
+AddType application/wasm .wasm
+AddType application/json .json
+
+# Gzip compression (exclude video/images)
 <IfModule mod_deflate.c>
   AddOutputFilterByType DEFLATE text/html text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml
 </IfModule>
