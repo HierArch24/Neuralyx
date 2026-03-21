@@ -53,7 +53,7 @@
               A massive step forward.
             </h1>
             <h2 class="font-[Poppins] text-[clamp(0.85rem,1.5vw,1.1rem)] font-light text-black/20 max-w-[600px] mx-auto mt-4">
-              As a mobile app developer, I aim to creatively elevate designs, taking significant leaps in innovation and pushing the boundaries of what's possible.
+              I build autonomous AI systems that run business operations — connecting people, processes, and technology across automation, DevOps, and AI/ML.
             </h2>
           </div>
         </div>
@@ -68,7 +68,7 @@
               A massive step forward.
             </h1>
             <h2 class="font-[Poppins] text-[clamp(0.85rem,1.5vw,1.1rem)] font-light text-white/70 max-w-[600px] mx-auto mt-4">
-              As a mobile app developer, I aim to creatively elevate designs, taking significant leaps in innovation and pushing the boundaries of what's possible.
+              I build autonomous AI systems that run business operations — connecting people, processes, and technology across automation, DevOps, and AI/ML.
             </h2>
           </div>
         </div>
