@@ -15,7 +15,11 @@ const stats = ref({
 })
 
 onMounted(async () => {
-  // Load OpenAI key from localStorage (set via admin dashboard settings)
+  // Auto-set OpenAI key from env if not in localStorage
+  if (!localStorage.getItem('neuralyx_openai_key') && import.meta.env.VITE_OPENAI_KEY) {
+    localStorage.setItem('neuralyx_openai_key', import.meta.env.VITE_OPENAI_KEY)
+    openaiKey.value = import.meta.env.VITE_OPENAI_KEY
+  }
   try {
     await Promise.all([
       admin.fetchProjects(),
@@ -98,15 +102,15 @@ function processVideoFile(file: File) {
   uploadingVideo.value = true
   const url = URL.createObjectURL(file)
   introVideoUrl.value = url
-  // Save filename for display, actual blob stays in memory for this session
-  localStorage.setItem('neuralyx_intro_video', `/assets/videos/${file.name}`)
+  // Keep edit mode open so user can see path and click Save
   localStorage.setItem('neuralyx_intro_video_blob', url)
   uploadingVideo.value = false
-  editingIntro.value = false
+  // Auto-set the path to the expected location
+  introVideoUrl.value = `/assets/videos/${file.name}`
 }
 
 // OpenAI Key
-const openaiKey = ref(localStorage.getItem('neuralyx_openai_key') || '')
+const openaiKey = ref(localStorage.getItem('neuralyx_openai_key') || import.meta.env.VITE_OPENAI_KEY || '')
 const showKeyInput = ref(false)
 const keySaved = ref(false)
 
