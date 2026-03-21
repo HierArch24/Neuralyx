@@ -15,6 +15,8 @@
             :src="src"
             controls
             autoplay
+            playsinline
+            preload="auto"
             class="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain"
             @ended="close"
           />

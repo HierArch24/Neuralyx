@@ -312,7 +312,7 @@ const DOMAINS = [
 ]
 
 async function callGPT(input: string): Promise<string | null> {
-  const apiKey = localStorage.getItem('neuralyx_openai_key')
+  const apiKey = localStorage.getItem('neuralyx_openai_key') || import.meta.env.VITE_OPENAI_KEY
   if (!apiKey) return null
 
   try {
@@ -320,7 +320,7 @@ async function callGPT(input: string): Promise<string | null> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           {
             role: 'system',
