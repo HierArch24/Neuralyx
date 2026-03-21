@@ -20,29 +20,53 @@
           <div class="flex-1 overflow-y-auto p-6" data-lenis-prevent>
             <!-- Input Phase -->
             <div v-if="!result">
-              <p class="text-sm text-white/60 mb-4">Describe your automation goal, problem, or system requirement. I'll analyze how my expertise matches your needs.</p>
+              <p class="text-sm text-white/60 mb-4">Describe your automation goal, upload a document, or paste a URL. I'll analyze how my expertise matches your needs.</p>
 
+              <!-- File Drop Zone -->
+              <div
+                class="rounded-xl border-2 border-dashed transition-colors mb-4 cursor-pointer"
+                :class="isDragging ? 'border-cyber-purple bg-cyber-purple/5' : 'border-white/10 hover:border-white/20'"
+                @dragover.prevent="isDragging = true"
+                @dragleave="isDragging = false"
+                @drop.prevent="handleFileDrop"
+                @click="($refs.fileInput as HTMLInputElement)?.click()"
+              >
+                <div v-if="uploadedFile" class="p-4 flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
+                    :class="fileIcon.bg">{{ fileIcon.emoji }}</div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-white truncate">{{ uploadedFile.name }}</p>
+                    <p class="text-[10px] text-white/40">{{ formatSize(uploadedFile.size) }} &middot; {{ fileStatus }}</p>
+                  </div>
+                  <button @click.stop="clearFile" class="text-white/30 hover:text-white/60 text-xs">Remove</button>
+                </div>
+                <div v-else class="p-6 text-center">
+                  <svg class="w-8 h-8 text-white/20 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                  <p class="text-xs text-white/40">Drop PDF, Word, Excel, or text file here</p>
+                  <p class="text-[10px] text-white/20 mt-1">or click to browse</p>
+                </div>
+              </div>
+              <input ref="fileInput" type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.md,.json" class="hidden" @change="handleFileSelect" />
+
+              <!-- Text Input -->
               <textarea
                 v-model="userInput"
-                rows="6"
+                rows="5"
                 class="w-full px-4 py-3 bg-white/[0.03] border border-white/10 rounded-xl text-white text-sm resize-none focus:border-cyber-purple/50 focus:outline-none placeholder-white/20"
-                placeholder="Example: We want to automate our monthly financial reconciliation using Stripe and Xero...
+                placeholder="Or type your goal, problem, or requirements here...
 
-Or list your requirements:
-- AI content generation at scale
-- CRM integration with lead tracking
-- Automated reporting dashboards"
+Example: We want to automate our monthly financial reconciliation using Stripe and Xero."
               ></textarea>
 
-              <div class="flex items-center gap-3 mt-3">
-                <input v-model="urlInput" placeholder="Or paste a URL (job post, project brief)..."
-                  class="flex-1 px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-white text-xs focus:border-cyber-purple/50 focus:outline-none placeholder-white/20" />
-              </div>
+              <!-- URL Input -->
+              <input v-model="urlInput" placeholder="Or paste a URL (job post, project brief, system link)..."
+                class="w-full mt-3 px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-white text-xs focus:border-cyber-purple/50 focus:outline-none placeholder-white/20" />
 
-              <button @click="analyze" :disabled="isAnalyzing || (!userInput.trim() && !urlInput.trim())"
-                class="w-full mt-4 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-30 transition-all"
+              <button @click="analyze" :disabled="isAnalyzing || (!userInput.trim() && !urlInput.trim() && !fileContent)"
+                class="w-full mt-4 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-30 transition-all flex items-center justify-center gap-2"
                 style="background: linear-gradient(135deg, var(--color-cyber-purple), var(--color-cyber-blue));">
-                {{ isAnalyzing ? 'Analyzing...' : 'Validate My Need' }}
+                <svg v-if="isAnalyzing" class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                {{ isAnalyzing ? 'Analyzing your requirements...' : 'Validate My Need' }}
               </button>
             </div>
 
@@ -54,10 +78,16 @@ Or list your requirements:
                   :class="result.overall >= 80 ? 'border-green-400' : result.overall >= 60 ? 'border-amber-400' : 'border-red-400'">
                   <span class="text-3xl font-bold text-white">{{ result.overall }}%</span>
                 </div>
-                <p class="text-sm text-white/60">Overall Match Score</p>
+                <p class="text-sm font-semibold text-white">VALIDATION COMPLETE</p>
                 <p class="text-xs mt-1" :class="result.overall >= 80 ? 'text-green-400' : result.overall >= 60 ? 'text-amber-400' : 'text-white/40'">
                   {{ result.overall >= 80 ? 'Strong match — I can deliver exactly what you need' : result.overall >= 60 ? 'Good match — most of your needs align with my expertise' : 'Partial match — some areas may need external resources' }}
                 </p>
+              </div>
+
+              <!-- File Summary (if file was uploaded) -->
+              <div v-if="result.fileSummary" class="bg-white/[0.03] rounded-xl p-4 border border-white/[0.06]">
+                <h3 class="text-xs text-white/40 uppercase tracking-wider mb-2">Document Summary</h3>
+                <p class="text-sm text-white/70 whitespace-pre-line">{{ result.fileSummary }}</p>
               </div>
 
               <!-- Domain Breakdown -->
@@ -74,6 +104,17 @@ Or list your requirements:
                     <span class="text-xs font-mono w-10 text-right" :class="d.match >= 80 ? 'text-green-400' : d.match >= 50 ? 'text-amber-400' : 'text-white/30'">{{ d.match }}%</span>
                     <span class="text-[10px] w-10 text-right" :class="d.relevance === 'High' ? 'text-green-400' : d.relevance === 'Medium' ? 'text-amber-400' : 'text-white/30'">{{ d.relevance }}</span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Identified Keywords -->
+              <div v-if="result.keywords.length">
+                <h3 class="text-xs text-white/40 uppercase tracking-wider mb-3">Identified Keywords</h3>
+                <div class="flex flex-wrap gap-1">
+                  <span v-for="kw in result.keywords" :key="kw"
+                    class="px-2 py-0.5 text-[10px] rounded-full bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20">
+                    {{ kw }}
+                  </span>
                 </div>
               </div>
 
@@ -103,8 +144,8 @@ Or list your requirements:
               <div v-if="result.prerequisites.length">
                 <h3 class="text-xs text-white/40 uppercase tracking-wider mb-3">Prerequisites Check</h3>
                 <div class="space-y-1">
-                  <p v-for="(p, i) in result.prerequisites" :key="i" class="text-xs text-white/50">
-                    <span :class="p.startsWith('✅') ? 'text-green-400' : p.startsWith('⚠') ? 'text-amber-400' : 'text-white/40'">{{ p }}</span>
+                  <p v-for="(p, i) in result.prerequisites" :key="i" class="text-xs">
+                    <span :class="p.startsWith('\u2705') ? 'text-green-400' : p.startsWith('\u26a0') ? 'text-amber-400' : 'text-white/40'">{{ p }}</span>
                   </p>
                 </div>
               </div>
@@ -133,7 +174,7 @@ Or list your requirements:
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 defineProps<{ visible: boolean }>()
 defineEmits<{ close: [] }>()
@@ -142,6 +183,10 @@ const userInput = ref('')
 const urlInput = ref('')
 const isAnalyzing = ref(false)
 const result = ref<ValidationResult | null>(null)
+const uploadedFile = ref<File | null>(null)
+const fileContent = ref('')
+const fileStatus = ref('')
+const isDragging = ref(false)
 
 interface DomainResult { name: string; match: number; relevance: string }
 interface ValidationResult {
@@ -150,71 +195,166 @@ interface ValidationResult {
   recommendations: string[]
   tools: string[]
   prerequisites: string[]
+  keywords: string[]
+  fileSummary: string
+}
+
+const fileIcon = computed(() => {
+  if (!uploadedFile.value) return { emoji: '📄', bg: 'bg-white/10' }
+  const ext = uploadedFile.value.name.split('.').pop()?.toLowerCase()
+  if (ext === 'pdf') return { emoji: '📕', bg: 'bg-red-500/20' }
+  if (ext === 'docx' || ext === 'doc') return { emoji: '📘', bg: 'bg-blue-500/20' }
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return { emoji: '📗', bg: 'bg-green-500/20' }
+  return { emoji: '📄', bg: 'bg-white/10' }
+})
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / 1048576).toFixed(1) + ' MB'
+}
+
+function handleFileDrop(e: DragEvent) {
+  isDragging.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (file) processFile(file)
+}
+
+function handleFileSelect(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (file) processFile(file)
+}
+
+async function processFile(file: File) {
+  uploadedFile.value = file
+  fileStatus.value = 'Extracting text...'
+  fileContent.value = ''
+
+  const ext = file.name.split('.').pop()?.toLowerCase()
+
+  try {
+    if (['txt', 'md', 'json', 'csv'].includes(ext || '')) {
+      fileContent.value = await file.text()
+      fileStatus.value = `${fileContent.value.split(/\s+/).length} words extracted`
+    } else if (ext === 'pdf') {
+      fileContent.value = await extractPdfText(file)
+      fileStatus.value = `${fileContent.value.split(/\s+/).length} words extracted from PDF`
+    } else if (ext === 'docx' || ext === 'doc') {
+      fileContent.value = await extractDocxText(file)
+      fileStatus.value = `${fileContent.value.split(/\s+/).length} words extracted from Word`
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      fileContent.value = await file.text().catch(() => '')
+      if (!fileContent.value) {
+        fileStatus.value = 'Excel file detected — please also describe your need in the text box'
+      } else {
+        fileStatus.value = `${fileContent.value.split(/\s+/).length} words extracted`
+      }
+    } else {
+      fileContent.value = await file.text()
+      fileStatus.value = 'File loaded'
+    }
+  } catch {
+    fileStatus.value = 'Could not extract text — please also type your requirements below'
+  }
+}
+
+async function extractPdfText(file: File): Promise<string> {
+  const pdfjsLib = await import('pdfjs-dist')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const texts: string[] = []
+
+  for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    texts.push(content.items.map((item: any) => item.str).join(' '))
+  }
+  return texts.join('\n')
+}
+
+async function extractDocxText(file: File): Promise<string> {
+  const mammoth = await import('mammoth')
+  const arrayBuffer = await file.arrayBuffer()
+  const result = await mammoth.extractRawText({ arrayBuffer })
+  return result.value
+}
+
+function clearFile() {
+  uploadedFile.value = null
+  fileContent.value = ''
+  fileStatus.value = ''
 }
 
 const DOMAINS = [
   {
     name: 'Business Automation',
-    keywords: ['onboarding', 'workflow', 'process', 'operations', 'crm', 'dashboard', 'reporting', 'sop', 'manual', 'repetitive', 'data entry', 'tracking', 'hr', 'employee', 'management', 'approval', 'internal', 'efficiency', 'optimize'],
-    tools: ['n8n', 'Supabase', 'Vue.js', 'Python', 'REST APIs'],
-    recs: ['End-to-end workflow automation', 'Operational reporting dashboard', 'Cross-system data synchronization', 'Automated onboarding pipeline'],
+    keywords: ['onboarding', 'workflow', 'process', 'operations', 'crm', 'dashboard', 'reporting', 'sop', 'manual', 'repetitive', 'data entry', 'tracking', 'hr', 'employee', 'management', 'approval', 'internal', 'efficiency', 'optimize', 'supervisor', 'payroll', 'invoice'],
+    tools: ['n8n', 'Supabase', 'Vue.js', 'Python', 'REST APIs', 'Zoho Cliq'],
+    recs: ['End-to-end workflow automation connecting CRMs and databases', 'Automated onboarding process with task assignment', 'Operational reporting dashboard with real-time data', 'Cross-system data synchronization'],
     prereqs: ['Existing SOPs or manual processes documented', 'Identified repetitive tasks', 'Access to current tools (CRM, database)'],
   },
   {
     name: 'Marketing Automation',
-    keywords: ['content', 'seo', 'blog', 'marketing', 'email', 'lead', 'campaign', 'funnel', 'conversion', 'engagement', 'newsletter', 'social media', 'publish', 'article', 'copywriting', 'audience', 'brand', 'ads'],
-    tools: ['n8n', 'Gemini 2.0 Flash', 'GoHighLevel', 'WordPress REST API', 'Surfer SEO'],
-    recs: ['AI-powered content engine with multi-agent pipeline', 'Automated lead capture and funnel management', 'SEO scoring engine with quality criteria', 'Automated publishing to CMS'],
+    keywords: ['content', 'seo', 'blog', 'marketing', 'email', 'lead', 'campaign', 'funnel', 'conversion', 'engagement', 'newsletter', 'social media', 'publish', 'article', 'copywriting', 'audience', 'brand', 'ads', 'avatar', 'gohighlevel'],
+    tools: ['n8n', 'Gemini 2.0 Flash', 'GoHighLevel', 'WordPress REST API', 'Surfer SEO', 'Pixabay API'],
+    recs: ['AI-powered content engine with 6-agent pipeline (Researcher, Writer, Critic, Editor)', 'Automated lead capture and CRM funnel management', 'SEO scoring engine with 24 quality criteria', 'Automated publishing to WordPress/CMS'],
     prereqs: ['Content strategy or SEO goals defined', 'CRM or email tool in place', 'Target audience identified'],
   },
   {
     name: 'DevOps & MLOps',
-    keywords: ['deploy', 'ci/cd', 'docker', 'container', 'cloud', 'server', 'hosting', 'infrastructure', 'pipeline', 'monitoring', 'nginx', 'production', 'scale', 'digitalocean', 'aws', 'github actions', 'cpanel'],
-    tools: ['Docker', 'DigitalOcean', 'GitHub Actions', 'nginx', 'Cloudflare'],
-    recs: ['Docker containerization with multi-stage builds', 'CI/CD pipeline via GitHub Actions', 'Cloud deployment with reverse proxy', 'System health monitoring with auto-heal'],
+    keywords: ['deploy', 'ci/cd', 'docker', 'container', 'cloud', 'server', 'hosting', 'infrastructure', 'pipeline', 'monitoring', 'nginx', 'production', 'scale', 'digitalocean', 'aws', 'github actions', 'cpanel', 'ssl', 'health check', 'kill switch'],
+    tools: ['Docker', 'DigitalOcean', 'GitHub Actions', 'nginx', 'Cloudflare', 'cPanel'],
+    recs: ['Docker containerization with multi-stage builds', 'CI/CD pipeline via GitHub Actions', 'Cloud deployment with nginx reverse proxy', 'System health monitoring with 14 service checks and auto-heal'],
     prereqs: ['Existing application to deploy', 'Cloud infrastructure readiness', 'Version control in place'],
   },
   {
     name: 'AI & Machine Learning',
-    keywords: ['ai', 'ml', 'machine learning', 'llm', 'agent', 'rag', 'vector', 'embedding', 'prompt', 'model', 'training', 'classification', 'prediction', 'nlp', 'neural', 'deep learning', 'scoring', 'generation', 'autonomous'],
-    tools: ['Gemini 2.0 Flash', 'OpenAI API', 'pgvector', 'LangChain', 'n8n'],
-    recs: ['Multi-agent AI pipeline (Researcher, Writer, Critic, Editor)', 'RAG workflow with vector database', 'Custom scoring engine with quality criteria', 'Prompt engineering and optimization'],
+    keywords: ['ai', 'ml', 'machine learning', 'llm', 'agent', 'rag', 'vector', 'embedding', 'prompt', 'model', 'training', 'classification', 'prediction', 'nlp', 'neural', 'deep learning', 'scoring', 'generation', 'autonomous', 'multi-agent', 'orchestrator', 'gemini', 'openai', 'gpt'],
+    tools: ['Gemini 2.0 Flash', 'OpenAI API', 'pgvector', 'LangChain', 'n8n', 'SearXNG'],
+    recs: ['Multi-agent AI pipeline (Orchestrator, Researcher, Writer, Critic, Editor)', 'RAG workflow with vector database for semantic search', 'Proprietary scoring engine with custom criteria', 'Prompt engineering and LLM optimization'],
     prereqs: ['Clear use case defined', 'Data availability for context', 'LLM API access or budget', 'Output quality expectations'],
   },
   {
     name: 'AI Chatbots & Conversational AI',
-    keywords: ['chatbot', 'chat', 'conversation', 'support', 'customer service', 'booking', 'appointment', 'whatsapp', 'slack', 'messaging', 'faq', 'ticket', 'helpdesk', 'zendesk', 'freshdesk', 'live chat'],
-    tools: ['Python', 'Django', 'n8n', 'OpenAI', 'Abacus AI', 'GoHighLevel'],
-    recs: ['Custom AI chatbot with CRM integration', 'Automated appointment booking system', 'AI-powered ticket triage and response', 'Multi-platform messaging integration'],
-    prereqs: ['Customer touchpoints identified', 'FAQs documented', 'Desired platform decided', 'Integration requirements known'],
+    keywords: ['chatbot', 'chat', 'conversation', 'support', 'customer service', 'booking', 'appointment', 'whatsapp', 'slack', 'messaging', 'faq', 'ticket', 'helpdesk', 'zendesk', 'freshdesk', 'live chat', 'bot', 'delphi'],
+    tools: ['Python', 'Django', 'Flutter', 'n8n', 'OpenAI', 'Abacus AI', 'Delphi AI', 'GoHighLevel'],
+    recs: ['Custom AI chatbot with CRM integration for lead tracking', 'Automated appointment booking with real-time notifications', 'AI-powered ticket triage and auto-response system', 'Multi-platform messaging integration (web, mobile, Slack)'],
+    prereqs: ['Customer touchpoints identified', 'FAQs or knowledge base documented', 'Desired platform decided', 'Integration requirements known'],
   },
   {
     name: 'Systems Integration & API',
-    keywords: ['api', 'integration', 'webhook', 'connect', 'sync', 'rest', 'oauth', 'saas', 'platform', 'stripe', 'xero', 'zapier', 'make', 'third party', 'external', 'data flow', 'json'],
-    tools: ['REST APIs', 'Webhooks', 'n8n', 'Zapier', 'Make.com'],
-    recs: ['REST API integrations with authentication', 'Webhook-based real-time automation', 'Data synchronization across platforms', 'Integration architecture documentation'],
+    keywords: ['api', 'integration', 'webhook', 'connect', 'sync', 'rest', 'oauth', 'saas', 'platform', 'stripe', 'xero', 'zapier', 'make', 'third party', 'external', 'data flow', 'json', 'endpoint', 'microservice'],
+    tools: ['REST APIs', 'Webhooks', 'OAuth', 'n8n', 'Zapier', 'Make.com', 'JSON'],
+    recs: ['REST API integrations with OAuth authentication', 'Webhook-based real-time automation triggers', 'Data synchronization across 14+ platforms', 'Integration architecture documentation and standards'],
     prereqs: ['List of tools to connect', 'API documentation available', 'Data sync needs defined'],
   },
   {
     name: 'Data Automation & Analytics',
-    keywords: ['data', 'analytics', 'report', 'dashboard', 'etl', 'extract', 'transform', 'visualization', 'metrics', 'kpi', 'spreadsheet', 'database', 'sql', 'postgresql', 'csv', 'pdf report', 'reconciliation', 'financial'],
-    tools: ['Supabase', 'PostgreSQL', 'Python', 'n8n', 'Power BI'],
-    recs: ['Automated data extraction from multiple sources', 'ETL pipeline for data transformation', 'Real-time analytics dashboard', 'Automated PDF report generation'],
-    prereqs: ['Data sources identified', 'Reporting requirements defined', 'Dashboard needs specified'],
+    keywords: ['data', 'analytics', 'report', 'dashboard', 'etl', 'extract', 'transform', 'visualization', 'metrics', 'kpi', 'spreadsheet', 'database', 'sql', 'postgresql', 'csv', 'pdf report', 'reconciliation', 'financial', 'power bi', 'google analytics'],
+    tools: ['Supabase', 'PostgreSQL', 'Python', 'n8n', 'Power BI', 'Google Analytics'],
+    recs: ['Automated data extraction from multiple sources', 'ETL pipeline for data transformation and loading', 'Real-time analytics dashboard with KPI tracking', 'Automated PDF batch report generation and distribution'],
+    prereqs: ['Data sources identified', 'Reporting requirements defined', 'Dashboard visualization needs specified'],
   },
 ]
 
 function analyze() {
   isAnalyzing.value = true
-  const input = (userInput.value + ' ' + urlInput.value).toLowerCase()
+  const allInput = [userInput.value, urlInput.value, fileContent.value].join(' ').toLowerCase()
 
   setTimeout(() => {
+    // Find all matching keywords
+    const matchedKeywords: string[] = []
     const domainScores: DomainResult[] = DOMAINS.map(domain => {
       let hits = 0
       domain.keywords.forEach(kw => {
-        if (input.includes(kw)) hits++
+        if (allInput.includes(kw)) {
+          hits++
+          if (!matchedKeywords.includes(kw)) matchedKeywords.push(kw)
+        }
       })
-      const match = Math.min(98, Math.round((hits / Math.max(domain.keywords.length * 0.35, 1)) * 100))
+      const match = Math.min(98, Math.round((hits / Math.max(domain.keywords.length * 0.3, 1)) * 100))
       const relevance = match >= 75 ? 'High' : match >= 40 ? 'Medium' : 'Low'
       return { name: domain.name, match, relevance }
     }).sort((a, b) => b.match - a.match)
@@ -231,31 +371,47 @@ function analyze() {
     domainScores.slice(0, 3).forEach(d => {
       const domain = DOMAINS.find(dom => dom.name === d.name)!
       if (d.match >= 30) {
-        domain.recs.slice(0, 2).forEach(r => { if (!recs.includes(r)) recs.push(r) })
+        domain.recs.forEach(r => { if (!recs.includes(r)) recs.push(r) })
         domain.tools.forEach(t => tools.add(t))
         if (d.match >= 60) {
-          prereqs.push(`✅ ${domain.name}: ${domain.prereqs[0]}`)
-        } else {
-          prereqs.push(`⚠️ ${domain.name}: ${domain.prereqs[0]}`)
+          prereqs.push(`\u2705 ${domain.name}: ${domain.prereqs[0]}`)
+        } else if (d.match >= 30) {
+          prereqs.push(`\u26a0\ufe0f ${domain.name}: ${domain.prereqs[0]}`)
         }
       }
     })
+
+    // Generate file summary
+    let fileSummary = ''
+    if (fileContent.value && uploadedFile.value) {
+      const words = fileContent.value.split(/\s+/).length
+      const sentences = fileContent.value.split(/[.!?]+/).filter(s => s.trim()).length
+      const topMatched = domainScores.filter(d => d.match >= 50).map(d => d.name)
+      fileSummary = `Analyzed "${uploadedFile.value.name}" (${words} words, ${sentences} sentences).\n`
+      fileSummary += `Found ${matchedKeywords.length} matching keywords across ${topMatched.length} relevant domains.\n`
+      if (topMatched.length) {
+        fileSummary += `Primary focus areas: ${topMatched.join(', ')}.`
+      }
+    }
 
     result.value = {
       overall,
       domains: domainScores,
       recommendations: recs.slice(0, 6),
-      tools: Array.from(tools).slice(0, 8),
+      tools: Array.from(tools).slice(0, 10),
       prerequisites: prereqs,
+      keywords: matchedKeywords.slice(0, 20),
+      fileSummary,
     }
     isAnalyzing.value = false
-  }, 1500)
+  }, 2000)
 }
 
 function reset() {
   result.value = null
   userInput.value = ''
   urlInput.value = ''
+  clearFile()
 }
 </script>
 
