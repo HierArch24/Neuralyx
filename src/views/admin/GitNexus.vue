@@ -10,6 +10,13 @@ const githubUrl = ref(localStorage.getItem('neuralyx_github_url') || '')
 const githubPat = ref(localStorage.getItem('neuralyx_github_pat') || '')
 const agentStatus = ref('')
 const isRunning = ref(false)
+const copiedField = ref('')
+
+function copyToClipboard(value: string, field: string) {
+  navigator.clipboard.writeText(value)
+  copiedField.value = field
+  setTimeout(() => { copiedField.value = '' }, 2000)
+}
 
 function onLoad() {
   isLoading.value = false
@@ -163,26 +170,53 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Config Panel -->
-    <div v-if="showConfig" class="bg-neural-800 border border-neural-600 rounded-xl p-4 mb-3 flex-shrink-0 space-y-3">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] text-gray-500 uppercase mb-1">GitHub Repository URL</label>
-          <input v-model="githubUrl" placeholder="https://github.com/HierArch24/NEURALYX"
-            class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
+    <!-- Quick Reference / Config Panel -->
+    <div class="bg-neural-800 border border-neural-600 rounded-xl p-3 mb-3 flex-shrink-0">
+      <div v-if="!showConfig && githubUrl" class="flex items-center gap-3 flex-wrap">
+        <!-- Saved URL with copy -->
+        <div class="flex items-center gap-2 flex-1 min-w-0">
+          <span class="text-[10px] text-gray-500 uppercase whitespace-nowrap">URL:</span>
+          <code class="text-xs text-cyber-cyan truncate flex-1 min-w-0">{{ githubUrl }}</code>
+          <button @click="copyToClipboard(githubUrl, 'url')"
+            class="px-2 py-1 text-[10px] rounded transition-colors flex-shrink-0"
+            :class="copiedField === 'url' ? 'bg-green-500/20 text-green-400' : 'bg-neural-700 text-gray-400 hover:text-white'">
+            {{ copiedField === 'url' ? 'Copied!' : 'Copy' }}
+          </button>
         </div>
-        <div>
-          <label class="block text-[10px] text-gray-500 uppercase mb-1">GitHub PAT (for private repos)</label>
-          <input v-model="githubPat" type="password" placeholder="ghp_xxxxxxxxxxxx"
-            class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
+        <!-- Saved PAT with copy -->
+        <div v-if="githubPat" class="flex items-center gap-2">
+          <span class="text-[10px] text-gray-500 uppercase whitespace-nowrap">PAT:</span>
+          <code class="text-xs text-gray-400">{{ githubPat.slice(0, 8) }}...{{ githubPat.slice(-4) }}</code>
+          <button @click="copyToClipboard(githubPat, 'pat')"
+            class="px-2 py-1 text-[10px] rounded transition-colors flex-shrink-0"
+            :class="copiedField === 'pat' ? 'bg-green-500/20 text-green-400' : 'bg-neural-700 text-gray-400 hover:text-white'">
+            {{ copiedField === 'pat' ? 'Copied!' : 'Copy' }}
+          </button>
         </div>
+        <button @click="showConfig = true" class="px-2 py-1 text-[10px] bg-neural-700 text-gray-400 rounded hover:text-white flex-shrink-0">Edit</button>
       </div>
-      <div class="flex gap-2">
-        <button @click="saveConfig" class="px-4 py-2 text-xs rounded-lg font-medium text-white"
-          style="background: linear-gradient(135deg, var(--color-cyber-purple), var(--color-cyber-blue));">
-          Save
-        </button>
-        <button @click="showConfig = false" class="px-4 py-2 text-xs text-gray-400 hover:text-white">Cancel</button>
+
+      <!-- Edit mode -->
+      <div v-if="showConfig || !githubUrl" class="space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[10px] text-gray-500 uppercase mb-1">GitHub Repository URL</label>
+            <input v-model="githubUrl" placeholder="https://github.com/HierArch24/NEURALYX"
+              class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-[10px] text-gray-500 uppercase mb-1">GitHub PAT (for private repos)</label>
+            <input v-model="githubPat" type="password" placeholder="ghp_xxxxxxxxxxxx"
+              class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button @click="saveConfig" class="px-4 py-2 text-xs rounded-lg font-medium text-white"
+            style="background: linear-gradient(135deg, var(--color-cyber-purple), var(--color-cyber-blue));">
+            Save
+          </button>
+          <button v-if="githubUrl" @click="showConfig = false" class="px-4 py-2 text-xs text-gray-400 hover:text-white">Cancel</button>
+        </div>
       </div>
     </div>
 
