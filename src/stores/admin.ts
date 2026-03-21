@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
-import type { Section, Project, Skill, Tool, ContactMessage } from '@/types/database'
+import type { Section, Project, Skill, Tool, ContactMessage, NewsArticle } from '@/types/database'
 
 export const useAdminStore = defineStore('admin', () => {
   const sections = ref<Section[]>([])
@@ -9,32 +9,54 @@ export const useAdminStore = defineStore('admin', () => {
   const skills = ref<Skill[]>([])
   const tools = ref<Tool[]>([])
   const messages = ref<ContactMessage[]>([])
+  const news = ref<NewsArticle[]>([])
   const loading = ref(false)
+  const lastError = ref<string | null>(null)
 
   // Generic CRUD helpers
   async function fetchTable<T>(table: string, target: { value: T[] }, orderBy = 'created_at') {
     loading.value = true
-    const { data, error } = await supabase.from(table).select('*').order(orderBy)
-    if (error) throw error
-    target.value = (data as T[]) ?? []
-    loading.value = false
+    lastError.value = null
+    try {
+      const { data, error } = await supabase.from(table).select('*').order(orderBy)
+      if (error) {
+        console.error(`[Admin] Failed to fetch ${table}:`, error.message)
+        lastError.value = `${table}: ${error.message}`
+        return
+      }
+      target.value = (data as T[]) ?? []
+    } catch (e: any) {
+      console.error(`[Admin] Network error fetching ${table}:`, e.message)
+      lastError.value = `${table}: ${e.message}`
+    } finally {
+      loading.value = false
+    }
   }
 
   async function insertRow(table: string, row: Record<string, unknown>) {
     const { data, error } = await supabase.from(table).insert(row as never).select().single()
-    if (error) throw error
+    if (error) {
+      console.error(`[Admin] Insert ${table} failed:`, error.message)
+      throw error
+    }
     return data
   }
 
   async function updateRow(table: string, id: string, updates: Record<string, unknown>) {
     const { data, error } = await supabase.from(table).update(updates as never).eq('id', id).select().single()
-    if (error) throw error
+    if (error) {
+      console.error(`[Admin] Update ${table} failed:`, error.message)
+      throw error
+    }
     return data
   }
 
   async function deleteRow(table: string, id: string) {
     const { error } = await supabase.from(table).delete().eq('id', id)
-    if (error) throw error
+    if (error) {
+      console.error(`[Admin] Delete ${table} failed:`, error.message)
+      throw error
+    }
   }
 
   // Table-specific fetchers
@@ -43,14 +65,15 @@ export const useAdminStore = defineStore('admin', () => {
   const fetchSkills = () => fetchTable<Skill>('skills', skills, 'category')
   const fetchTools = () => fetchTable<Tool>('tools', tools, 'category')
   const fetchMessages = () => fetchTable<ContactMessage>('contact_messages', messages, 'created_at')
+  const fetchNews = () => fetchTable<NewsArticle>('news', news, 'sort_order')
 
   async function markMessageRead(id: string) {
     await updateRow('contact_messages', id, { is_read: true })
   }
 
   return {
-    sections, projects, skills, tools, messages, loading,
-    fetchSections, fetchProjects, fetchSkills, fetchTools, fetchMessages,
+    sections, projects, skills, tools, messages, news, loading, lastError,
+    fetchSections, fetchProjects, fetchSkills, fetchTools, fetchMessages, fetchNews,
     insertRow, updateRow, deleteRow, markMessageRead,
   }
 })

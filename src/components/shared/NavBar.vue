@@ -5,16 +5,15 @@ const scrolled = ref(false)
 const mobileMenuOpen = ref(false)
 
 const sectionLinks = [
-  { label: 'About', href: '#about' },
+  { label: 'About', href: '#about-us' },
+  { label: 'Portfolio', href: '#portfolio' },
   { label: 'Skills', href: '#skills' },
-  { label: 'Projects', href: '#projects' },
-  { label: 'Contact', href: '#contact' },
+  { label: 'Web Projects', href: '#services' },
 ]
 
 const pageLinks = [
-  { label: 'Projects', href: '/projects' },
-  { label: 'Skills', href: '/skills' },
-  { label: 'Tools', href: '/tools' },
+  { label: 'Certificates', href: '/certificates' },
+  { label: 'Automation', href: '/automation' },
 ]
 
 function handleScroll() {

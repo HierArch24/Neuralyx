@@ -1,94 +1,116 @@
-<script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { gsap } from '@/lib/gsap-setup'
-import ParallaxLayer from '@/components/shared/ParallaxLayer.vue'
-
-const heroRef = ref<HTMLElement | null>(null)
-const titleRef = ref<HTMLElement | null>(null)
-const subtitleRef = ref<HTMLElement | null>(null)
-const ctaRef = ref<HTMLElement | null>(null)
-
-onMounted(() => {
-  if (!heroRef.value) return
-
-  const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
-
-  tl.from(titleRef.value, { y: 60, opacity: 0, duration: 1, delay: 0.3 })
-    .from(subtitleRef.value, { y: 40, opacity: 0, duration: 0.8 }, '-=0.4')
-    .from(ctaRef.value, { y: 30, opacity: 0, duration: 0.6 }, '-=0.3')
-})
-</script>
-
 <template>
-  <section
-    id="hero"
-    ref="heroRef"
-    class="relative min-h-screen flex items-center justify-center text-center px-6"
-  >
-    <!-- Cyber Sabertooth parallax background image -->
-    <ParallaxLayer :speed="0.2" class="absolute inset-0 z-0 opacity-20">
+  <section ref="sectionRef" class="relative min-h-screen overflow-hidden flex items-end" style="background-color: var(--dark-shade-1)">
+    <!-- Parallax Background GIF - moves slower than content on scroll -->
+    <div ref="bgRef" class="absolute inset-0 z-0 will-change-transform" style="top: -15%; height: 130%;">
       <img
-        src="/assets/images/cyber-saber.jpg"
-        alt=""
+        src="/assets/images/intel/Background.gif"
+        alt="Background animation"
         class="w-full h-full object-cover"
       />
-    </ParallaxLayer>
-
-    <div class="relative z-10 max-w-4xl mx-auto">
-      <!-- Logo -->
-      <img
-        src="/assets/images/neuralyx-logo.jpg"
-        alt="NEURALYX"
-        class="w-24 h-24 mx-auto mb-8 rounded-2xl shadow-2xl shadow-cyber-purple/30"
-      />
-
-      <h1
-        ref="titleRef"
-        class="text-5xl md:text-7xl lg:text-8xl font-display font-bold mb-6"
-      >
-        <span class="text-gradient-cyber">NEURALYX</span>
-      </h1>
-
-      <p
-        ref="subtitleRef"
-        class="text-xl md:text-2xl text-gray-300 mb-4 font-light"
-      >
-        AI Systems Engineering
-      </p>
-
-      <p class="text-base md:text-lg text-gray-400 mb-10 max-w-2xl mx-auto">
-        Building intelligent systems at the intersection of artificial intelligence,
-        automation, and full-stack engineering.
-      </p>
-
-      <div ref="ctaRef" class="flex flex-wrap items-center justify-center gap-4">
-        <a
-          href="#projects"
-          class="px-8 py-3 bg-cyber-purple hover:bg-cyber-purple/80 text-white rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-cyber-purple/25"
-        >
-          View Projects
-        </a>
-        <a
-          href="#contact"
-          class="px-8 py-3 border border-cyber-cyan/50 text-cyber-cyan hover:bg-cyber-cyan/10 rounded-lg font-medium transition-all"
-        >
-          Get in Touch
-        </a>
-        <a
-          href="/assets/documents/resume.pdf"
-          target="_blank"
-          class="px-8 py-3 border border-gray-600 text-gray-300 hover:border-gray-400 hover:text-white rounded-lg font-medium transition-all"
-        >
-          Resume
-        </a>
-      </div>
+      <div class="absolute inset-0 bg-[url('/assets/images/intel/overlay-pattern.png')] bg-repeat opacity-[0.37]"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-neural-900 via-neural-900/40 to-transparent"></div>
     </div>
 
-    <!-- Scroll indicator -->
-    <div class="absolute bottom-10 left-1/2 -translate-x-1/2 animate-bounce">
-      <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-      </svg>
+    <!-- Hero Content -->
+    <div ref="contentRef" class="relative z-10 w-full px-6 md:px-12 pb-12 md:pb-20 will-change-transform">
+      <div ref="headingRef" class="mb-8">
+        <h1 class="font-[Bebas_Neue] text-[clamp(3rem,8vw,7rem)] leading-[0.95] tracking-wide text-white text-center md:text-left">
+          AI Systems<br />
+          Engineer &<br />
+          Developer
+        </h1>
+      </div>
+
+      <div ref="bottomRef" class="flex flex-col sm:flex-row items-center sm:items-end gap-6">
+        <button
+          @click="resume.open()"
+          class="btn-outline-light"
+        >
+          View Resume
+        </button>
+        <div>
+          <h3 class="text-white text-center sm:text-left font-[Poppins] text-lg">
+            8 Years <strong>Experience</strong>
+          </h3>
+        </div>
+      </div>
     </div>
   </section>
 </template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
+import { gsap } from '@/lib/gsap-setup'
+import { useResumeModal } from '@/composables/useResumeModal'
+
+const resume = useResumeModal()
+
+const sectionRef = ref<HTMLElement | null>(null)
+const bgRef = ref<HTMLElement | null>(null)
+const contentRef = ref<HTMLElement | null>(null)
+const headingRef = ref<HTMLElement | null>(null)
+const bottomRef = ref<HTMLElement | null>(null)
+
+let ctx: gsap.Context | null = null
+
+onMounted(() => {
+  if (!sectionRef.value) return
+  ctx = gsap.context(() => {
+    const tl = gsap.timeline({ delay: 2.2 })
+
+    tl.from(headingRef.value, {
+      y: 60,
+      opacity: 0,
+      duration: 1,
+      ease: 'power3.out'
+    })
+    .from(bottomRef.value, {
+      y: 40,
+      opacity: 0,
+      duration: 0.8,
+      ease: 'power2.out'
+    }, '-=0.4')
+
+    // PARALLAX: Background moves at 60% of scroll speed (classic parallax)
+    gsap.fromTo(bgRef.value,
+      { yPercent: 0 },
+      {
+        yPercent: 30,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: sectionRef.value,
+          start: 'top top',
+          end: 'bottom top',
+          scrub: true
+        }
+      }
+    )
+
+    // PARALLAX: Content moves faster than background (opposite direction feel)
+    gsap.to(contentRef.value, {
+      y: -120,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: sectionRef.value,
+        start: 'top top',
+        end: 'bottom top',
+        scrub: true
+      }
+    })
+
+    // PARALLAX: Heading drifts up even faster for layered depth
+    gsap.to(headingRef.value, {
+      y: -60,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: sectionRef.value,
+        start: 'top top',
+        end: 'bottom top',
+        scrub: true
+      }
+    })
+  }, sectionRef.value)
+})
+
+onUnmounted(() => { ctx?.revert() })
+</script>

@@ -4,13 +4,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://phpdxvaowytijhvclljb.supabase.co}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBocGR4dmFvd3l0aWpodmNsbGpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MjE4ODksImV4cCI6MjA4OTQ5Nzg4OX0.ClHZrdLj47HKUiDTfh6oolx3zRtD_dO2kidjfqY92nY}
+        VITE_MCP_SERVER_URL: ${VITE_MCP_SERVER_URL:-http://localhost:8080}
     ports:
       - "3000:80"
     depends_on:
       - postgres
-    environment:
-      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
-      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 
   postgres:
     container_name: neuralyx-postgres

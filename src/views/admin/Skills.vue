@@ -32,13 +32,17 @@ function openEdit(skill: Skill) {
 }
 
 async function handleSave() {
-  if (editing.value) {
-    await admin.updateRow('skills', editing.value.id, form.value)
-  } else {
-    await admin.insertRow('skills', form.value)
+  try {
+    if (editing.value) {
+      await admin.updateRow('skills', editing.value.id, { ...form.value })
+    } else {
+      await admin.insertRow('skills', { ...form.value })
+    }
+    showModal.value = false
+    await admin.fetchSkills()
+  } catch (e: any) {
+    alert('Save failed: ' + (e.message || e))
   }
-  showModal.value = false
-  await admin.fetchSkills()
 }
 
 async function handleDelete(id: string) {

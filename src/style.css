@@ -22,14 +22,24 @@
   --color-transition-gold: #d97706;
 
   /* Fonts */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Poppins', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --font-display: 'Orbitron', 'Inter', sans-serif;
+  --font-display: 'Bebas Neue', 'Orbitron', 'Inter', sans-serif;
+  --font-heading: 'Syncopate', 'Inter', sans-serif;
+  --font-body: 'Lato', 'Poppins', sans-serif;
 }
 
-/* Base styles */
-html {
-  scroll-behavior: smooth;
+/* Base styles — scroll-behavior handled by Lenis */
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
 }
 
 body {
@@ -79,4 +89,30 @@ body {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* 3D Parallax perspective container */
+.perspective-container {
+  perspective: 1200px;
+  perspective-origin: 50% 50%;
+}
+
+/* GPU-accelerated parallax layers */
+.parallax-layer {
+  will-change: transform;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+
+/* Glow effects */
+.glow-purple {
+  box-shadow: 0 0 30px rgba(139, 92, 246, 0.3), 0 0 60px rgba(139, 92, 246, 0.1);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 30px rgba(34, 211, 238, 0.3), 0 0 60px rgba(34, 211, 238, 0.1);
+}
+
+.glow-gold {
+  box-shadow: 0 0 30px rgba(245, 158, 11, 0.3), 0 0 60px rgba(245, 158, 11, 0.1);
 }

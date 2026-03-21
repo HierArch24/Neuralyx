@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useContentStore } from '@/stores/content'
+import { useSmoothScroll } from '@/composables/useSmoothScroll'
 
 const content = useContentStore()
+useSmoothScroll()
 
 onMounted(() => {
   content.fetchAll()

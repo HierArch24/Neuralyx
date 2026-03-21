@@ -26,6 +26,11 @@ export interface Database {
         Insert: Omit<ContactMessage, 'id' | 'created_at' | 'is_read'>
         Update: Partial<Omit<ContactMessage, 'id' | 'created_at'>>
       }
+      news: {
+        Row: NewsArticle
+        Insert: Omit<NewsArticle, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<NewsArticle, 'id' | 'created_at' | 'updated_at'>>
+      }
       site_settings: {
         Row: SiteSetting
         Insert: Omit<SiteSetting, 'id' | 'created_at' | 'updated_at'>
@@ -93,6 +98,29 @@ export interface ContactMessage {
   message: string
   is_read: boolean
   created_at: string
+}
+
+export interface NewsArticle {
+  id: string
+  title: string
+  slug: string
+  summary: string
+  content: string
+  image_url: string | null
+  video_url: string | null
+  link_url: string | null
+  category: string
+  is_published: boolean
+  is_featured: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ResumeContent {
+  id: string
+  content_html: string
+  updated_at: string
 }
 
 export interface SiteSetting {

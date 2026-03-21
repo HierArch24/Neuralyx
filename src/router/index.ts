@@ -1,8 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   scrollBehavior(to, _from, savedPosition) {
     if (savedPosition) return savedPosition
     if (to.hash) return { el: to.hash, behavior: 'smooth' }
@@ -13,39 +12,124 @@ const router = createRouter({
       path: '/',
       component: () => import('@/layouts/DefaultLayout.vue'),
       children: [
-        { path: '', name: 'home', component: () => import('@/views/LandingPage.vue') },
-        { path: 'projects', name: 'projects', component: () => import('@/views/ProjectShowcase.vue') },
-        { path: 'skills', name: 'skills', component: () => import('@/views/SkillsDetail.vue') },
-        { path: 'tools', name: 'tools', component: () => import('@/views/ToolsIUse.vue') },
-      ],
+        {
+          path: '',
+          name: 'home',
+          component: () => import('@/views/LandingPage.vue')
+        },
+        {
+          path: 'projects',
+          name: 'projects',
+          component: () => import('@/views/ProjectShowcase.vue')
+        },
+        {
+          path: 'projects/:slug',
+          name: 'project-detail',
+          component: () => import('@/views/ProjectDetail.vue')
+        },
+        {
+          path: 'skills',
+          name: 'skills',
+          component: () => import('@/views/SkillsDetail.vue')
+        },
+        {
+          path: 'tools',
+          name: 'tools',
+          component: () => import('@/views/ToolsIUse.vue')
+        },
+        {
+          path: 'certificates',
+          name: 'certificates',
+          component: () => import('@/views/CertificatesPage.vue')
+        },
+        {
+          path: 'automation',
+          name: 'automation',
+          component: () => import('@/views/AutomationProjectsPage.vue')
+        },
+        {
+          path: 'news',
+          name: 'news',
+          component: () => import('@/views/NewsPage.vue')
+        },
+      ]
     },
     {
       path: '/login',
       name: 'login',
-      component: () => import('@/views/admin/LoginPage.vue'),
+      component: () => import('@/views/admin/LoginPage.vue')
     },
     {
       path: '/admin',
       component: () => import('@/layouts/AdminLayout.vue'),
       meta: { requiresAuth: true },
       children: [
-        { path: '', name: 'admin-dashboard', component: () => import('@/views/admin/Dashboard.vue') },
-        { path: 'projects', name: 'admin-projects', component: () => import('@/views/admin/Projects.vue') },
-        { path: 'skills', name: 'admin-skills', component: () => import('@/views/admin/Skills.vue') },
-        { path: 'tools', name: 'admin-tools', component: () => import('@/views/admin/Tools.vue') },
-        { path: 'sections', name: 'admin-sections', component: () => import('@/views/admin/Sections.vue') },
-        { path: 'messages', name: 'admin-messages', component: () => import('@/views/admin/Messages.vue') },
-      ],
+        {
+          path: '',
+          name: 'admin-dashboard',
+          component: () => import('@/views/admin/Dashboard.vue')
+        },
+        {
+          path: 'projects',
+          name: 'admin-projects',
+          component: () => import('@/views/admin/Projects.vue')
+        },
+        {
+          path: 'skills',
+          name: 'admin-skills',
+          component: () => import('@/views/admin/Skills.vue')
+        },
+        {
+          path: 'tools',
+          name: 'admin-tools',
+          component: () => import('@/views/admin/Tools.vue')
+        },
+        {
+          path: 'sections',
+          name: 'admin-sections',
+          component: () => import('@/views/admin/Sections.vue')
+        },
+        {
+          path: 'messages',
+          name: 'admin-messages',
+          component: () => import('@/views/admin/Messages.vue')
+        },
+        {
+          path: 'connections',
+          name: 'admin-connections',
+          component: () => import('@/views/admin/ConnectionHealth.vue')
+        },
+        {
+          path: 'news',
+          name: 'admin-news',
+          component: () => import('@/views/admin/News.vue')
+        },
+        {
+          path: 'resume',
+          name: 'admin-resume',
+          component: () => import('@/views/admin/Resume.vue')
+        },
+        {
+          path: 'git-nexus',
+          name: 'admin-git-nexus',
+          component: () => import('@/views/admin/GitNexus.vue')
+        },
+        {
+          path: 'certificates',
+          name: 'admin-certificates',
+          component: () => import('@/views/admin/Certificates.vue')
+        },
+      ]
     },
-  ],
+  ]
 })
 
 router.beforeEach(async (to) => {
   if (to.meta.requiresAuth) {
-    const auth = useAuthStore()
-    await auth.initialize()
-    if (!auth.isAuthenticated) {
-      return { name: 'login', query: { redirect: to.fullPath } }
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+    if (!authStore.isAuthenticated) {
+      return { name: 'login' }
     }
   }
 })

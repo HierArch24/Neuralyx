@@ -1,30 +1,29 @@
-<script setup lang="ts">
-import ScrollVideoBackground from '@/components/shared/ScrollVideoBackground.vue'
-import HeroSection from '@/components/landing/HeroSection.vue'
-import AboutSection from '@/components/landing/AboutSection.vue'
-import TechArsenalSection from '@/components/landing/TechArsenalSection.vue'
-import AIIntelligenceSection from '@/components/landing/AIIntelligenceSection.vue'
-import AutomationSection from '@/components/landing/AutomationSection.vue'
-import ProjectsSection from '@/components/landing/ProjectsSection.vue'
-import ToolsSection from '@/components/landing/ToolsSection.vue'
-import ProfessionalSection from '@/components/landing/ProfessionalSection.vue'
-import ContactSection from '@/components/landing/ContactSection.vue'
-import FooterSection from '@/components/landing/FooterSection.vue'
-</script>
-
 <template>
-  <ScrollVideoBackground />
-
-  <div class="relative z-10">
+  <div class="landing-page">
+    <MasterCurtain />
     <HeroSection />
+    <ParallaxRingsSection />
     <AboutSection />
-    <TechArsenalSection />
-    <AIIntelligenceSection />
-    <AutomationSection />
-    <ProjectsSection />
-    <ToolsSection />
-    <ProfessionalSection />
-    <ContactSection />
+    <MobilePortfolioSection />
+    <DocumentationSection />
+    <SkillsTableSection />
+    <WebProjectsSection />
+    <WarpedCtaSection />
     <FooterSection />
+    <ResumeModal />
   </div>
 </template>
+
+<script setup lang="ts">
+import MasterCurtain from '@/components/landing/MasterCurtain.vue'
+import HeroSection from '@/components/landing/HeroSection.vue'
+import ParallaxRingsSection from '@/components/landing/ParallaxRingsSection.vue'
+import AboutSection from '@/components/landing/AboutSection.vue'
+import MobilePortfolioSection from '@/components/landing/MobilePortfolioSection.vue'
+import DocumentationSection from '@/components/landing/DocumentationSection.vue'
+import SkillsTableSection from '@/components/landing/SkillsTableSection.vue'
+import WebProjectsSection from '@/components/landing/WebProjectsSection.vue'
+import WarpedCtaSection from '@/components/landing/WarpedCtaSection.vue'
+import FooterSection from '@/components/landing/FooterSection.vue'
+import ResumeModal from '@/components/shared/ResumeModal.vue'
+</script>

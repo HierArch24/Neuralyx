@@ -70,10 +70,13 @@ const filtered = computed(() => {
               </span>
             </div>
             <h3 class="text-lg font-semibold text-white mb-2">{{ project.title }}</h3>
-            <p class="text-sm text-gray-400">{{ project.description }}</p>
+            <p class="text-sm text-gray-400 line-clamp-3">{{ project.description.replace(/<[^>]*>/g, '').substring(0, 150) }}{{ project.description.length > 150 ? '...' : '' }}</p>
             <div class="flex gap-3 mt-4">
+              <router-link :to="'/projects/' + project.slug" class="text-sm text-cyber-cyan hover:text-white transition-colors">
+                View Details &rarr;
+              </router-link>
               <a v-if="project.github_url" :href="project.github_url" target="_blank" class="text-sm text-gray-400 hover:text-white">GitHub</a>
-              <a v-if="project.live_url" :href="project.live_url" target="_blank" class="text-sm text-cyber-cyan hover:text-white">Live</a>
+              <a v-if="project.live_url" :href="project.live_url" target="_blank" class="text-sm text-cyber-cyan/60 hover:text-white">Live</a>
             </div>
           </div>
         </div>
