@@ -29,16 +29,16 @@ import { gsap } from '@/lib/gsap-setup'
 const gridRef = ref<HTMLElement | null>(null)
 
 const automationImages = [
-  '/assets/images/automation/1.png',
-  '/assets/images/automation/2.png',
-  '/assets/images/automation/3.png',
-  '/assets/images/automation/4.png',
-  '/assets/images/automation/5.png',
-  '/assets/images/automation/6.png',
-  '/assets/images/automation/7.png',
-  '/assets/images/automation/8.png',
-  '/assets/images/automation/9.png',
-  '/assets/images/automation/10.png',
+  '/assets/images/automation/Ai avatar social Automation.png',
+  '/assets/images/automation/Ai factory long form video generation content.png',
+  '/assets/images/automation/Ai lead follow automation .png',
+  '/assets/images/automation/Client Onboarding system automation.png',
+  '/assets/images/automation/Faceless Pov Ai machine.png',
+  '/assets/images/automation/Invoice OCR workflow.png',
+  '/assets/images/automation/Smart AI resume screening.png',
+  '/assets/images/automation/Think Tool Agent.png',
+  '/assets/images/automation/hermes workflow.png',
+  '/assets/images/automation/project directory.jpg',
 ]
 
 function openImage(src: string) {

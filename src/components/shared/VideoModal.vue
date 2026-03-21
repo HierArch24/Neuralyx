@@ -3,9 +3,9 @@
     <Transition name="modal">
       <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center" @click.self="close">
         <div class="absolute inset-0 bg-black/90 backdrop-blur-sm" @click="close"></div>
-        <div class="relative z-10 w-full max-w-5xl mx-4">
+        <div class="relative z-10 flex flex-col items-center mx-4 max-h-[90vh]">
           <button
-            class="absolute -top-12 right-0 text-white/70 hover:text-white text-3xl transition-colors"
+            class="absolute -top-10 right-0 text-white/70 hover:text-white text-3xl transition-colors z-10"
             @click="close"
           >
             &times;
@@ -15,7 +15,7 @@
             :src="src"
             controls
             autoplay
-            class="w-full rounded-lg shadow-2xl"
+            class="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain"
             @ended="close"
           />
           <p v-if="title" class="text-white/60 text-center mt-3 text-sm font-[Poppins]">{{ title }}</p>
