@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
+import { useSupabase } from '@/composables/useSupabase'
 import type { Skill } from '@/types/database'
 
 const admin = useAdminStore()
+const { supabase } = useSupabase()
 const showModal = ref(false)
 const editing = ref<Skill | null>(null)
 const bulkYears = ref(8)
@@ -80,24 +82,54 @@ async function handleDelete(id: string) {
   }
 }
 
+const bulkStatus = ref('')
+
 async function bulkSetYears() {
-  const skills = filterCategory.value === 'all' ? admin.skills : admin.skills.filter(s => s.category === filterCategory.value)
-  for (const skill of skills) {
-    await admin.updateRow('skills', skill.id, { years_experience: bulkYears.value })
+  bulkStatus.value = 'Applying...'
+  try {
+    if (filterCategory.value === 'all') {
+      // Update all — use individual calls since Supabase needs a filter
+      for (const s of admin.skills) {
+        await supabase.from('skills').update({ years_experience: bulkYears.value } as never).eq('id', s.id)
+      }
+    } else {
+      await supabase.from('skills').update({ years_experience: bulkYears.value } as never).eq('category', filterCategory.value)
+    }
+    await admin.fetchSkills()
+    bulkStatus.value = `Set ${filterCategory.value === 'all' ? 'all' : filterCategory.value} skills to ${bulkYears.value} years`
+    setTimeout(() => { bulkStatus.value = '' }, 3000)
+  } catch (e: any) {
+    bulkStatus.value = 'Error: ' + e.message
   }
-  await admin.fetchSkills()
-  showBulkPanel.value = false
 }
 
 async function bulkSetProficiency() {
   if (bulkProficiency.value <= 0) return
-  const skills = filterCategory.value === 'all' ? admin.skills : admin.skills.filter(s => s.category === filterCategory.value)
-  for (const skill of skills) {
-    await admin.updateRow('skills', skill.id, { proficiency: bulkProficiency.value })
+  bulkStatus.value = 'Applying...'
+  try {
+    if (filterCategory.value === 'all') {
+      for (const s of admin.skills) {
+        await supabase.from('skills').update({ proficiency: bulkProficiency.value } as never).eq('id', s.id)
+      }
+    } else {
+      await supabase.from('skills').update({ proficiency: bulkProficiency.value } as never).eq('category', filterCategory.value)
+    }
+    await admin.fetchSkills()
+    bulkStatus.value = `Set ${filterCategory.value === 'all' ? 'all' : filterCategory.value} proficiency to ${bulkProficiency.value}%`
+    setTimeout(() => { bulkStatus.value = '' }, 3000)
+  } catch (e: any) {
+    bulkStatus.value = 'Error: ' + e.message
   }
-  await admin.fetchSkills()
-  showBulkPanel.value = false
 }
+
+// Pagination
+const currentPage = ref(1)
+const perPage = 10
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredSkills.value.length / perPage)))
+const paginatedSkills = computed(() => {
+  const start = (currentPage.value - 1) * perPage
+  return filteredSkills.value.slice(start, start + perPage)
+})
 </script>
 
 <template>
@@ -149,7 +181,8 @@ async function bulkSetProficiency() {
           </div>
         </div>
       </div>
-      <p class="text-[10px] text-white/30">Applies to {{ filterCategory === 'all' ? 'all skills' : `"${filterCategory}" category only` }}</p>
+      <p v-if="bulkStatus" class="text-xs" :class="bulkStatus.startsWith('Error') ? 'text-red-400' : 'text-green-400'">{{ bulkStatus }}</p>
+      <p v-else class="text-[10px] text-white/30">Applies to {{ filterCategory === 'all' ? 'all skills' : `"${filterCategory}" category only` }}</p>
     </div>
 
     <!-- Search -->
@@ -189,7 +222,7 @@ async function bulkSetProficiency() {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="skill in filteredSkills" :key="skill.id" class="border-t border-neural-700">
+          <tr v-for="skill in paginatedSkills" :key="skill.id" class="border-t border-neural-700">
             <td class="p-4 text-white">{{ skill.icon }} {{ skill.name }}</td>
             <td class="p-4 text-gray-400">{{ skill.category }}</td>
             <td class="p-4">
@@ -208,6 +241,18 @@ async function bulkSetProficiency() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between mt-4">
+      <p class="text-xs text-gray-500">Showing {{ (currentPage - 1) * perPage + 1 }}–{{ Math.min(currentPage * perPage, filteredSkills.length) }} of {{ filteredSkills.length }}</p>
+      <div class="flex items-center gap-2">
+        <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1"
+          class="px-3 py-1.5 text-xs rounded-lg bg-neural-700 text-gray-400 disabled:opacity-30 hover:text-white transition-colors">Prev</button>
+        <span class="text-xs text-gray-400">{{ currentPage }} / {{ totalPages }}</span>
+        <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages"
+          class="px-3 py-1.5 text-xs rounded-lg bg-neural-700 text-gray-400 disabled:opacity-30 hover:text-white transition-colors">Next</button>
+      </div>
     </div>
 
     <!-- Modal -->

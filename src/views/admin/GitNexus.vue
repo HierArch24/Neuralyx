@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
-const iframeUrl = ref('/gitnexus/index.html')
+const iframeUrl = ref('https://gitnexus.vercel.app')
 const isLoading = ref(true)
 const showConfig = ref(false)
 

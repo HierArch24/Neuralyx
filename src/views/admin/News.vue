@@ -60,6 +60,15 @@ const categoryCounts = computed(() => {
   return counts
 })
 
+// Pagination
+const currentPage = ref(1)
+const perPage = 10
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredArticles.value.length / perPage)))
+const paginatedArticles = computed(() => {
+  const start = (currentPage.value - 1) * perPage
+  return filteredArticles.value.slice(start, start + perPage)
+})
+
 const form = ref({
   title: '',
   slug: '',
@@ -209,7 +218,7 @@ async function unpinFromLanding(article: NewsArticle) {
 
     <!-- Articles List -->
     <div class="space-y-3">
-      <div v-for="article in filteredArticles" :key="article.id"
+      <div v-for="article in paginatedArticles" :key="article.id"
            class="bg-neural-800 border rounded-lg p-4 flex items-start gap-4"
            :class="landingIds.has(article.id) ? 'border-amber-500/40' : 'border-neural-600'">
         <div class="flex-1 min-w-0">
@@ -259,6 +268,18 @@ async function unpinFromLanding(article: NewsArticle) {
       <div v-if="!filteredArticles.length" class="text-center py-12 text-gray-400">
         <p class="text-4xl mb-3">📰</p>
         <p class="text-sm">{{ searchQuery || filterCategory !== 'all' ? 'No articles match your filter.' : 'No articles yet.' }}</p>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between mt-4">
+      <p class="text-xs text-gray-500">Showing {{ (currentPage - 1) * perPage + 1 }}–{{ Math.min(currentPage * perPage, filteredArticles.length) }} of {{ filteredArticles.length }}</p>
+      <div class="flex items-center gap-2">
+        <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1"
+          class="px-3 py-1.5 text-xs rounded-lg bg-neural-700 text-gray-400 disabled:opacity-30 hover:text-white transition-colors">Prev</button>
+        <span class="text-xs text-gray-400">{{ currentPage }} / {{ totalPages }}</span>
+        <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages"
+          class="px-3 py-1.5 text-xs rounded-lg bg-neural-700 text-gray-400 disabled:opacity-30 hover:text-white transition-colors">Next</button>
       </div>
     </div>
 
