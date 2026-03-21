@@ -24,7 +24,9 @@ WORKDIR /gitnexus
 RUN git clone --depth 1 https://github.com/nxpatterns/gitnexus.git . \
     && cd gitnexus-web \
     && npm ci \
-    && npm run build
+    && npm run build \
+    && sed -i 's|"/assets/|"/gitnexus/assets/|g' dist/index.html \
+    && sed -i 's|"/wasm/|"/gitnexus/wasm/|g' dist/index.html
 
 # Stage 3: Serve
 FROM nginx:alpine
