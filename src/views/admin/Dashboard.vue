@@ -70,6 +70,49 @@ function statusColor(status: string) {
 const totalContent = computed(() =>
   stats.value.projects + stats.value.skills + stats.value.tools + stats.value.sections
 )
+
+// Video Management
+const editingVideoId = ref<string | null>(null)
+const videoUrlInput = ref('')
+const frontVideoUrl = ref(localStorage.getItem('neuralyx_front_video') || '/assets/videos/vid-t.mp4')
+const editingFront = ref(false)
+const copied = ref('')
+
+const projectVideos = computed(() =>
+  admin.projects.map(p => ({
+    id: p.id,
+    title: p.title,
+    slug: p.slug,
+    category: p.category,
+    video_url: (p as any).video_url || '',
+    hasVideo: !!((p as any).video_url),
+  })).sort((a, b) => (a.hasVideo === b.hasVideo ? 0 : a.hasVideo ? -1 : 1))
+)
+
+const videoCount = computed(() => projectVideos.value.filter(p => p.hasVideo).length)
+
+function startEditVideo(id: string, currentUrl: string) {
+  editingVideoId.value = id
+  videoUrlInput.value = currentUrl
+}
+
+async function saveVideoUrl(id: string) {
+  await admin.updateRow('projects', id, { video_url: videoUrlInput.value || null })
+  await admin.fetchProjects()
+  editingVideoId.value = null
+}
+
+function copyShareLink(slug: string) {
+  const url = `${window.location.origin}/video/${slug}`
+  navigator.clipboard.writeText(url)
+  copied.value = slug
+  setTimeout(() => { copied.value = '' }, 2000)
+}
+
+function saveFrontVideo() {
+  localStorage.setItem('neuralyx_front_video', frontVideoUrl.value)
+  editingFront.value = false
+}
 </script>
 
 <template>
@@ -162,6 +205,62 @@ const totalContent = computed(() =>
                     }">
                 {{ service.status }}
               </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video Assets -->
+      <div class="glass-dark rounded-xl p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-lg font-semibold text-white">Video Assets</h3>
+            <p class="text-xs text-gray-500 mt-0.5">{{ videoCount }} of {{ projectVideos.length }} projects have videos</p>
+          </div>
+        </div>
+
+        <!-- Front Page Video -->
+        <div class="bg-neural-700/50 rounded-lg p-3 mb-4 flex items-center justify-between">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <span class="text-lg">🎬</span>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs text-gray-400 uppercase tracking-wider">Front Page Video</p>
+              <div v-if="editingFront" class="flex gap-2 mt-1">
+                <input v-model="frontVideoUrl" class="flex-1 px-2 py-1 bg-neural-800 border border-neural-600 rounded text-white text-xs focus:border-cyber-purple focus:outline-none" />
+                <button @click="saveFrontVideo" class="px-2 py-1 text-[10px] bg-cyber-purple/20 text-cyber-purple rounded hover:bg-cyber-purple/30">Save</button>
+                <button @click="editingFront = false" class="px-2 py-1 text-[10px] bg-neural-600 text-gray-400 rounded">Cancel</button>
+              </div>
+              <p v-else class="text-white text-xs truncate">{{ frontVideoUrl }}</p>
+            </div>
+          </div>
+          <button v-if="!editingFront" @click="editingFront = true" class="px-2 py-1 text-[10px] bg-neural-600 text-gray-300 rounded hover:bg-neural-500 flex-shrink-0 ml-2">Edit</button>
+        </div>
+
+        <!-- Project Videos -->
+        <div class="max-h-64 overflow-y-auto space-y-1" data-lenis-prevent>
+          <div v-for="p in projectVideos" :key="p.id"
+            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neural-700/40 transition-colors">
+            <span class="w-2 h-2 rounded-full flex-shrink-0" :class="p.hasVideo ? 'bg-green-400' : 'bg-gray-600'"></span>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs text-white truncate">{{ p.title }}</p>
+              <div v-if="editingVideoId === p.id" class="flex gap-2 mt-1">
+                <input v-model="videoUrlInput" placeholder="/assets/videos/web/demo.mp4"
+                  class="flex-1 px-2 py-1 bg-neural-800 border border-neural-600 rounded text-white text-[10px] focus:border-cyber-purple focus:outline-none" />
+                <button @click="saveVideoUrl(p.id)" class="px-2 py-1 text-[10px] bg-cyber-purple/20 text-cyber-purple rounded hover:bg-cyber-purple/30">Save</button>
+                <button @click="editingVideoId = null" class="px-2 py-1 text-[10px] bg-neural-600 text-gray-400 rounded">X</button>
+              </div>
+              <p v-else-if="p.video_url" class="text-[10px] text-gray-500 truncate">{{ p.video_url }}</p>
+            </div>
+            <div v-if="editingVideoId !== p.id" class="flex items-center gap-1 flex-shrink-0">
+              <button v-if="p.hasVideo" @click="copyShareLink(p.slug)"
+                class="px-2 py-1 text-[10px] rounded transition-colors"
+                :class="copied === p.slug ? 'bg-green-500/20 text-green-400' : 'bg-neural-600 text-gray-400 hover:text-cyan-400'">
+                {{ copied === p.slug ? 'Copied!' : 'Share' }}
+              </button>
+              <button @click="startEditVideo(p.id, p.video_url)"
+                class="px-2 py-1 text-[10px] bg-neural-600 text-gray-400 rounded hover:text-white">
+                {{ p.hasVideo ? 'Edit' : '+ Add' }}
+              </button>
             </div>
           </div>
         </div>
