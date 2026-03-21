@@ -22,6 +22,15 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
+      # Build self-hosted GitNexus
+      - name: Build GitNexus
+        run: |
+          git clone --depth 1 https://github.com/nxpatterns/gitnexus.git /tmp/gitnexus
+          cd /tmp/gitnexus/gitnexus-web
+          npm ci
+          npm run build
+          cp -r dist/ $GITHUB_WORKSPACE/dist/gitnexus/
+
       - name: Deploy to cPanel via rsync
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
