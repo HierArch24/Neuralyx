@@ -1,20 +1,38 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
+const router = useRouter()
+const route = useRoute()
 const scrolled = ref(false)
 const mobileMenuOpen = ref(false)
 
 const sectionLinks = [
-  { label: 'About', href: '#about-us' },
-  { label: 'Portfolio', href: '#portfolio' },
-  { label: 'Skills', href: '#skills' },
-  { label: 'Web Projects', href: '#services' },
+  { label: 'About', target: 'about-us' },
+  { label: 'Portfolio', target: 'portfolio' },
+  { label: 'Skills', target: 'skills' },
+  { label: 'Web Projects', target: 'services' },
 ]
 
 const pageLinks = [
   { label: 'Certificates', href: '/certificates' },
   { label: 'Automation', href: '/automation' },
 ]
+
+function scrollToSection(target: string) {
+  mobileMenuOpen.value = false
+  if (route.path === '/') {
+    const el = document.getElementById(target)
+    if (el) el.scrollIntoView({ behavior: 'smooth' })
+  } else {
+    router.push('/').then(() => {
+      setTimeout(() => {
+        const el = document.getElementById(target)
+        if (el) el.scrollIntoView({ behavior: 'smooth' })
+      }, 300)
+    })
+  }
+}
 
 function handleScroll() {
   scrolled.value = window.scrollY > 50
@@ -39,14 +57,14 @@ onUnmounted(() => window.removeEventListener('scroll', handleScroll))
       <!-- Desktop Nav -->
       <div class="hidden md:flex items-center gap-8">
         <div class="flex items-center gap-6">
-          <a
+          <button
             v-for="link in sectionLinks"
-            :key="link.href"
-            :href="link.href"
+            :key="link.target"
             class="text-sm text-gray-300 hover:text-white transition-colors"
+            @click="scrollToSection(link.target)"
           >
             {{ link.label }}
-          </a>
+          </button>
         </div>
 
         <div class="h-4 w-px bg-neural-600" />
@@ -89,15 +107,23 @@ onUnmounted(() => window.removeEventListener('scroll', handleScroll))
 
     <!-- Mobile Menu -->
     <div v-if="mobileMenuOpen" class="md:hidden glass-dark mt-2 mx-4 rounded-xl p-4 space-y-3">
-      <a
-        v-for="link in [...sectionLinks, ...pageLinks]"
+      <button
+        v-for="link in sectionLinks"
+        :key="link.target"
+        class="block w-full text-left text-sm text-gray-300 hover:text-white py-2"
+        @click="scrollToSection(link.target)"
+      >
+        {{ link.label }}
+      </button>
+      <RouterLink
+        v-for="link in pageLinks"
         :key="link.href"
-        :href="link.href"
-        class="block text-sm text-gray-300 hover:text-white py-2"
+        :to="link.href"
+        class="block text-sm text-gray-400 hover:text-cyber-cyan py-2"
         @click="mobileMenuOpen = false"
       >
         {{ link.label }}
-      </a>
+      </RouterLink>
     </div>
   </nav>
 </template>

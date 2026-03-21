@@ -18,7 +18,13 @@
         >
           <div class="aspect-[4/3] overflow-hidden bg-neural-800">
             <img v-if="cert.isImage" :src="cert.file" :alt="cert.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-            <embed v-else :src="cert.file + '#toolbar=0&navpanes=0&scrollbar=0'" type="application/pdf" class="w-full h-full pointer-events-none" />
+            <div v-else class="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-neural-800 to-neural-900 group-hover:from-neural-700 group-hover:to-neural-800 transition-colors duration-300">
+              <svg class="w-14 h-14 text-red-400/60 mb-3 group-hover:text-red-400 transition-colors" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zm-2.5 9.5a1.5 1.5 0 0 1 0 3H9v1.5H7.5v-6H10.5zm4.5 0a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1-1.5 1.5H13.5v-4H15zm-4.5 1.5H9v1h1.5v-1zm4.5 0H15v1.5h.5a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5z"/>
+              </svg>
+              <span class="text-white/40 text-xs font-medium uppercase tracking-wider">PDF Certificate</span>
+              <span class="text-white/20 text-[10px] mt-1">Click to view</span>
+            </div>
           </div>
           <div class="p-4">
             <h3 class="text-white text-sm font-medium truncate">{{ cert.name }}</h3>
