@@ -34,21 +34,20 @@ export const useAdminStore = defineStore('admin', () => {
   }
 
   async function insertRow(table: string, row: Record<string, unknown>) {
-    const { data, error } = await supabase.from(table).insert(row as never).select().single()
+    const { data, error } = await supabase.from(table).insert(row as never).select()
     if (error) {
       console.error(`[Admin] Insert ${table} failed:`, error.message)
       throw error
     }
-    return data
+    return data?.[0] ?? data
   }
 
   async function updateRow(table: string, id: string, updates: Record<string, unknown>) {
-    const { data, error } = await supabase.from(table).update(updates as never).eq('id', id).select().single()
+    const { error } = await supabase.from(table).update(updates as never).eq('id', id)
     if (error) {
       console.error(`[Admin] Update ${table} failed:`, error.message)
       throw error
     }
-    return data
   }
 
   async function deleteRow(table: string, id: string) {
