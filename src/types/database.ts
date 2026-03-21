@@ -62,6 +62,7 @@ export interface Project {
   category: string
   github_url: string | null
   live_url: string | null
+  video_url: string | null
   is_featured: boolean
   sort_order: number
   created_at: string

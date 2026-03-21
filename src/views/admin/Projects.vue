@@ -49,6 +49,7 @@ const form = ref({
   category: 'web',
   github_url: '',
   live_url: '',
+  video_url: '',
   is_featured: false,
   sort_order: 0,
 })
@@ -57,7 +58,7 @@ onMounted(() => admin.fetchProjects())
 
 function openCreate() {
   editing.value = null
-  Object.assign(form.value, { title: '', slug: '', description: '', image_url: '', tech_stack: '', category: 'web', github_url: '', live_url: '', is_featured: false, sort_order: 0 })
+  Object.assign(form.value, { title: '', slug: '', description: '', image_url: '', tech_stack: '', category: 'web', github_url: '', live_url: '', video_url: '', is_featured: false, sort_order: 0 })
   showModal.value = true
 }
 
@@ -296,6 +297,11 @@ function processFile(file: File) {
               </div>
               <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="handleFileSelect" />
               <input v-model="form.image_url" class="w-full mt-2 px-3 py-1.5 bg-neural-700 border border-neural-600 rounded-lg text-white text-[11px] focus:border-cyber-purple focus:outline-none" placeholder="Or paste image URL path..." />
+            </div>
+
+            <div>
+              <label class="block text-xs text-gray-400 uppercase mb-1">Video URL (for Watch Overview)</label>
+              <input v-model="form.video_url" class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" placeholder="/assets/videos/web/demo.mp4 or https://youtube.com/..." />
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
