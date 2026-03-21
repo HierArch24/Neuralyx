@@ -41,87 +41,146 @@ function copyToClipboard(value: string, field: string) {
 
 function delay(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
+async function getIframeDoc(): Promise<Document | null> {
+  const iframe = document.querySelector('iframe') as HTMLIFrameElement | null
+  if (!iframe) return null
+  try {
+    const doc = iframe.contentDocument || iframe.contentWindow?.document
+    if (doc && doc.body) return doc
+  } catch { /* cross-origin */ }
+  return null
+}
+
 async function autoClone() {
   if (!githubUrl.value) { agentStatus.value = 'Set GitHub URL first'; return }
   isRunning.value = true
+  agentStatus.value = 'Agent: Waiting for GitNexus to load...'
 
-  const iframe = document.querySelector('iframe') as HTMLIFrameElement | null
-  const doc = iframe?.contentDocument || iframe?.contentWindow?.document
+  // Wait for iframe to be accessible
+  let doc: Document | null = null
+  for (let i = 0; i < 10; i++) {
+    doc = await getIframeDoc()
+    if (doc && doc.querySelectorAll('input').length > 0) break
+    await delay(500)
+  }
 
-  if (!doc) {
-    // Fallback: copy to clipboard
-    agentStatus.value = 'Cross-origin: URL copied to clipboard — paste it in GitNexus'
+  if (!doc || doc.querySelectorAll('input').length === 0) {
+    agentStatus.value = 'Cannot access GitNexus DOM — URL copied to clipboard instead'
     await navigator.clipboard.writeText(githubUrl.value)
     isRunning.value = false
     return
   }
 
   try {
-    agentStatus.value = 'Agent: Scanning GitNexus...'
+    agentStatus.value = 'Agent: Looking for GitHub tab...'
     await delay(500)
 
-    // Find URL/repo input
-    const allInputs = Array.from(doc.querySelectorAll('input:not([type="hidden"]):not([type="file"]):not([type="checkbox"])')) as HTMLInputElement[]
+    // Step 0: Find and click "from GitHub" or "GitHub URL" tab
+    const allClickables = Array.from(doc.querySelectorAll('button, [role="tab"], a, div, span, label, li')) as HTMLElement[]
+    let tabClicked = false
+    for (const el of allClickables) {
+      const text = (el.textContent || '').toLowerCase().trim()
+      // Match "from github", "github url", "github" tab - but NOT "clone repository" or "zip"
+      if ((text === 'github' || text === 'from github' || text === 'github url' || text.includes('from github'))
+          && !text.includes('zip') && !text.includes('clone repository')
+          && el.offsetParent !== null && el.offsetWidth > 0) {
+        agentStatus.value = `Agent: Clicking "${el.textContent?.trim()}" tab...`
+        el.click()
+        tabClicked = true
+        await delay(1000)
+        break
+      }
+    }
+    if (!tabClicked) {
+      // Try clicking element with class containing 'github' or 'repo'
+      const byClass = doc.querySelector('[class*="github"], [data-tab*="github"], [id*="github"]') as HTMLElement | null
+      if (byClass && byClass.offsetParent !== null) {
+        agentStatus.value = 'Agent: Clicking GitHub tab by class...'
+        byClass.click()
+        await delay(1000)
+      }
+    }
+
+    agentStatus.value = 'Agent: Finding input fields...'
+    await delay(300)
+
+    // Find URL input (placeholder contains "github.com/owner/repo")
+    const allInputs = Array.from(doc.querySelectorAll('input')) as HTMLInputElement[]
     let urlInput: HTMLInputElement | null = null
     let tokenInput: HTMLInputElement | null = null
 
     for (const el of allInputs) {
       const ph = (el.placeholder || '').toLowerCase()
-      const lbl = (el.getAttribute('aria-label') || '').toLowerCase()
-      const name = (el.name || '').toLowerCase()
-      if (ph.includes('github') || ph.includes('repo') || ph.includes('url') || ph.includes('http') || lbl.includes('repo') || name.includes('repo') || name.includes('url')) {
+      if (ph.includes('owner/repo') || ph.includes('github.com') || ph.includes('repository url')) {
         urlInput = el
-      } else if (el.type === 'password' || ph.includes('token') || ph.includes('pat') || ph.includes('key') || name.includes('token') || name.includes('pat')) {
+      } else if (el.type === 'password') {
         tokenInput = el
       }
     }
-
-    // If no labeled input found, use first visible text input
+    // Fallback: first visible non-password input
     if (!urlInput) {
       for (const el of allInputs) {
-        if (el.offsetParent !== null && el.type !== 'password') { urlInput = el; break }
+        if (el.type !== 'password' && el.type !== 'hidden' && el.type !== 'file' && el.offsetParent !== null) {
+          urlInput = el
+          break
+        }
       }
     }
 
     if (urlInput) {
-      agentStatus.value = 'Agent: Filling GitHub URL...'
-      urlInput.focus()
-      // Clear existing value
-      urlInput.value = ''
-      urlInput.dispatchEvent(new Event('input', { bubbles: true }))
-      await delay(100)
-      // Type the URL character by character for React compatibility
-      for (const char of githubUrl.value) {
-        urlInput.value += char
-        urlInput.dispatchEvent(new Event('input', { bubbles: true }))
+      agentStatus.value = 'Agent: Typing GitHub URL...'
+      // Use native input setter for React compatibility
+      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      if (nativeSetter) {
+        nativeSetter.call(urlInput, githubUrl.value)
+      } else {
+        urlInput.value = githubUrl.value
       }
+      urlInput.dispatchEvent(new Event('input', { bubbles: true }))
       urlInput.dispatchEvent(new Event('change', { bubbles: true }))
-      await delay(300)
+      await delay(500)
       agentStatus.value = 'Agent: URL entered!'
+    } else {
+      agentStatus.value = 'Agent: No URL input found'
     }
 
-    // Fill PAT if available
+    // Fill PAT
     if (githubPat.value && tokenInput) {
       await delay(300)
       agentStatus.value = 'Agent: Filling PAT...'
-      tokenInput.focus()
-      tokenInput.value = githubPat.value
+      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      if (nativeSetter) {
+        nativeSetter.call(tokenInput, githubPat.value)
+      } else {
+        tokenInput.value = githubPat.value
+      }
       tokenInput.dispatchEvent(new Event('input', { bubbles: true }))
       tokenInput.dispatchEvent(new Event('change', { bubbles: true }))
       await delay(300)
     }
 
-    // Find and click clone/analyze button
-    await delay(300)
-    agentStatus.value = 'Agent: Looking for clone button...'
-    const buttons = Array.from(doc.querySelectorAll('button, [role="button"], a.btn, input[type="submit"]')) as HTMLElement[]
+    // Find and click "Clone Repository" button specifically
+    await delay(500)
+    agentStatus.value = 'Agent: Looking for Clone Repository button...'
+    const buttons = Array.from(doc.querySelectorAll('button')) as HTMLButtonElement[]
     let cloneBtn: HTMLElement | null = null
 
     for (const btn of buttons) {
-      const text = (btn.textContent || '').toLowerCase()
-      if ((text.includes('clone') || text.includes('load') || text.includes('analyze') || text.includes('index') || text.includes('go') || text.includes('fetch') || text.includes('submit') || text.includes('start')) && btn.offsetParent !== null) {
+      const text = (btn.textContent || '').trim().toLowerCase()
+      // Match "clone repository" or "clone repo" exactly, not tab buttons
+      if ((text === 'clone repository' || text === 'clone repo' || text === 'clone') && btn.offsetParent !== null) {
         cloneBtn = btn
         break
+      }
+    }
+    // Fallback: button containing "clone" that isn't a tab
+    if (!cloneBtn) {
+      for (const btn of buttons) {
+        const text = (btn.textContent || '').trim().toLowerCase()
+        if (text.includes('clone') && !text.includes('auto') && btn.offsetParent !== null && btn.offsetHeight > 30) {
+          cloneBtn = btn
+          break
+        }
       }
     }
 
