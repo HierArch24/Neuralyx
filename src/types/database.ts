@@ -36,6 +36,11 @@ export interface Database {
         Insert: Omit<SiteSetting, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<SiteSetting, 'id' | 'created_at' | 'updated_at'>>
       }
+      credentials: {
+        Row: Credential
+        Insert: Omit<Credential, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<Credential, 'id' | 'created_at' | 'updated_at'>>
+      }
     }
   }
 }
@@ -128,6 +133,22 @@ export interface SiteSetting {
   id: string
   key: string
   value: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface Credential {
+  id: string
+  company: string
+  service: string
+  description: string | null
+  label: string
+  type: string
+  value: string
+  status: string
+  notes: string | null
+  last_used_at: string | null
+  utilized_by: string | null
   created_at: string
   updated_at: string
 }

@@ -75,6 +75,23 @@ CREATE TABLE site_settings (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Credentials (Client API keys, OAuth tokens, secrets)
+CREATE TABLE credentials (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company TEXT NOT NULL,
+    service TEXT NOT NULL DEFAULT '',
+    description TEXT,
+    label TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'api_key',
+    value TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    notes TEXT,
+    last_used_at TIMESTAMPTZ,
+    utilized_by TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
@@ -90,6 +107,7 @@ CREATE TRIGGER projects_updated_at BEFORE UPDATE ON projects FOR EACH ROW EXECUT
 CREATE TRIGGER skills_updated_at BEFORE UPDATE ON skills FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER tools_updated_at BEFORE UPDATE ON tools FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER site_settings_updated_at BEFORE UPDATE ON site_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER credentials_updated_at BEFORE UPDATE ON credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Seed default site settings
 INSERT INTO site_settings (key, value) VALUES

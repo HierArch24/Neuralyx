@@ -124,6 +124,11 @@ const router = createRouter({
           name: 'admin-certificates',
           component: () => import('@/views/admin/Certificates.vue')
         },
+        {
+          path: 'credentials',
+          name: 'admin-credentials',
+          component: () => import('@/views/admin/Credentials.vue')
+        },
       ]
     },
   ]

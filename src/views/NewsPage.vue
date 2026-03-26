@@ -18,6 +18,23 @@
         <p class="font-[Poppins] text-white/40 text-sm mt-2">Latest insights on AI, automation, and engineering</p>
       </div>
 
+      <!-- Search Bar -->
+      <div class="relative mb-6 max-w-lg">
+        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Search news... try 'mcp', 'tool', 'ai-agent', 'seo'"
+          class="w-full pl-11 pr-10 py-2.5 rounded-xl border border-white/[0.08] text-sm font-[Poppins] text-white placeholder-white/25 focus:border-white/20 focus:outline-none transition-colors"
+          style="background: rgba(255,255,255,0.03);"
+        />
+        <button v-if="searchQuery" @click="searchQuery = ''" class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
       <!-- Category filter -->
       <div class="flex flex-wrap gap-2 mb-8">
         <button
@@ -36,7 +53,7 @@
       <!-- News Grid -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div
-          v-for="article in filteredNews"
+          v-for="article in paginatedNews"
           :key="article.id"
           class="news-card group rounded-xl border border-white/[0.06] overflow-hidden transition-all duration-300 hover:border-white/15 hover:-translate-y-1 cursor-pointer"
           style="background: linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));"
@@ -83,8 +100,37 @@
 
       <!-- Empty state -->
       <div v-if="filteredNews.length === 0" class="text-center py-20">
-        <p class="text-white/30 font-[Poppins] text-sm">No articles found in this category.</p>
+        <p class="text-white/30 font-[Poppins] text-sm">No articles found{{ searchQuery ? ' for "' + searchQuery + '"' : ' in this category' }}.</p>
       </div>
+
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="flex items-center justify-center gap-4 mt-10">
+        <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1"
+          class="px-4 py-2 rounded-lg text-sm font-[Poppins] border border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20 transition-all disabled:opacity-25 disabled:cursor-not-allowed"
+          style="background: rgba(255,255,255,0.03);">
+          &larr; Prev
+        </button>
+        <div class="flex items-center gap-1.5">
+          <button v-for="page in totalPages" :key="page" @click="currentPage = page"
+            class="w-8 h-8 rounded-lg text-xs font-[Poppins] font-medium transition-all"
+            :class="page === currentPage
+              ? 'text-white border border-white/20'
+              : 'text-white/30 border border-transparent hover:text-white/60'"
+            :style="page === currentPage ? 'background: rgba(255,255,255,0.08);' : ''">
+            {{ page }}
+          </button>
+        </div>
+        <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages"
+          class="px-4 py-2 rounded-lg text-sm font-[Poppins] border border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20 transition-all disabled:opacity-25 disabled:cursor-not-allowed"
+          style="background: rgba(255,255,255,0.03);">
+          Next &rarr;
+        </button>
+      </div>
+
+      <!-- Result count -->
+      <p v-if="filteredNews.length > 0" class="text-center text-white/20 text-xs font-[Poppins] mt-4">
+        {{ filteredNews.length }} article{{ filteredNews.length !== 1 ? 's' : '' }}{{ searchQuery ? ' found' : '' }}
+      </p>
     </div>
 
     <!-- Floating Modal -->
@@ -137,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { gsap } from '@/lib/gsap-setup'
 import { useContentStore } from '@/stores/content'
 import type { NewsArticle } from '@/types/database'
@@ -146,6 +192,33 @@ const content = useContentStore()
 const modalRef = ref<HTMLElement | null>(null)
 const activeArticle = ref<NewsArticle | null>(null)
 const selectedCategory = ref('all')
+const searchQuery = ref('')
+const currentPage = ref(1)
+const perPage = 9
+
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  ai: ['ai', 'artificial intelligence', 'machine learning', 'ml', 'deep learning', 'neural'],
+  tool: ['tool', 'cli', 'sdk', 'library', 'framework', 'utility'],
+  mcp: ['mcp', 'model context protocol'],
+  'ai-agent': ['ai-agent', 'agent', 'autonomous', 'agentic'],
+  skills: ['skills', 'learning', 'tutorial', 'course'],
+  platform: ['platform', 'saas', 'service', 'cloud'],
+  'ai-model': ['ai-model', 'model', 'llm', 'gpt', 'claude', 'gemini', 'benchmark'],
+  '3d-gen': ['3d-gen', '3d', 'generation', 'render'],
+  automation: ['automation', 'automate', 'workflow', 'pipeline', 'ci/cd'],
+  web: ['web', 'website', 'frontend', 'backend', 'seo', 'html', 'css', 'javascript'],
+  mobile: ['mobile', 'ios', 'android', 'app'],
+  devops: ['devops', 'docker', 'kubernetes', 'deploy', 'infrastructure'],
+  general: ['general', 'news', 'update'],
+}
+
+function detectCategory(query: string): string | null {
+  const q = query.toLowerCase().trim()
+  for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (keywords.some(kw => q === kw || q.startsWith(kw + ' ') || q.endsWith(' ' + kw))) return cat
+  }
+  return null
+}
 
 const allCategories = computed(() => {
   const cats = new Set(content.publishedNews.map(n => n.category))
@@ -153,9 +226,48 @@ const allCategories = computed(() => {
 })
 
 const filteredNews = computed(() => {
-  if (selectedCategory.value === 'all') return content.publishedNews
-  return content.publishedNews.filter(n => n.category === selectedCategory.value)
+  let results = content.publishedNews
+
+  // Category filter from buttons
+  if (selectedCategory.value !== 'all') {
+    results = results.filter(n => n.category === selectedCategory.value)
+  }
+
+  // Search query
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase().trim()
+    const matchedCat = detectCategory(q)
+
+    if (matchedCat && selectedCategory.value === 'all') {
+      // Smart category: show that category first, then text matches
+      const catMatches = results.filter(a => a.category === matchedCat)
+      const textMatches = results.filter(a =>
+        a.category !== matchedCat && (
+          a.title.toLowerCase().includes(q) ||
+          a.summary.toLowerCase().includes(q)
+        )
+      )
+      return [...catMatches, ...textMatches]
+    }
+
+    results = results.filter(a =>
+      a.title.toLowerCase().includes(q) ||
+      a.summary.toLowerCase().includes(q) ||
+      a.category.toLowerCase().includes(q)
+    )
+  }
+
+  return results
 })
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredNews.value.length / perPage)))
+const paginatedNews = computed(() => {
+  const start = (currentPage.value - 1) * perPage
+  return filteredNews.value.slice(start, start + perPage)
+})
+
+// Reset page when filters change
+watch([searchQuery, selectedCategory], () => { currentPage.value = 1 })
 
 function getCategoryColor(cat: string): string {
   const colors: Record<string, string> = {

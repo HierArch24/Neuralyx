@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
-import type { Section, Project, Skill, Tool, ContactMessage, NewsArticle } from '@/types/database'
+import type { Section, Project, Skill, Tool, ContactMessage, NewsArticle, Credential } from '@/types/database'
 
 export const useAdminStore = defineStore('admin', () => {
   const sections = ref<Section[]>([])
@@ -10,6 +10,7 @@ export const useAdminStore = defineStore('admin', () => {
   const tools = ref<Tool[]>([])
   const messages = ref<ContactMessage[]>([])
   const news = ref<NewsArticle[]>([])
+  const credentials = ref<Credential[]>([])
   const loading = ref(false)
   const lastError = ref<string | null>(null)
 
@@ -65,14 +66,15 @@ export const useAdminStore = defineStore('admin', () => {
   const fetchTools = () => fetchTable<Tool>('tools', tools, 'category')
   const fetchMessages = () => fetchTable<ContactMessage>('contact_messages', messages, 'created_at')
   const fetchNews = () => fetchTable<NewsArticle>('news', news, 'sort_order')
+  const fetchCredentials = () => fetchTable<Credential>('credentials', credentials, 'company')
 
   async function markMessageRead(id: string) {
     await updateRow('contact_messages', id, { is_read: true })
   }
 
   return {
-    sections, projects, skills, tools, messages, news, loading, lastError,
-    fetchSections, fetchProjects, fetchSkills, fetchTools, fetchMessages, fetchNews,
+    sections, projects, skills, tools, messages, news, credentials, loading, lastError,
+    fetchSections, fetchProjects, fetchSkills, fetchTools, fetchMessages, fetchNews, fetchCredentials,
     insertRow, updateRow, deleteRow, markMessageRead,
   }
 })

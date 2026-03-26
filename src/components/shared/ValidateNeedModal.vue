@@ -77,7 +77,7 @@
                 class="w-full mt-3 px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-white text-xs focus:border-cyber-purple/50 focus:outline-none placeholder-white/20" />
 
               <!-- Analyze Button -->
-              <button @click="analyze" :disabled="isAnalyzing || (!userInput.trim() && !urlInput.trim() && !fileContent && !selectedDomains.length)"
+              <button @click="analyze" :disabled="isAnalyzing || (!userInput.trim() && !urlInput.trim() && !fileContent && !selectedDomains.length && !uploadedFile)"
                 class="w-full mt-4 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-30 transition-all flex items-center justify-center gap-2"
                 style="background: linear-gradient(135deg, var(--color-cyber-purple), var(--color-cyber-blue));">
                 <svg v-if="isAnalyzing" class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -269,9 +269,11 @@ async function processFile(file: File) {
       fileContent.value = await file.text()
     } else if (ext === 'pdf') {
       const pdfjsLib = await import('pdfjs-dist')
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+      const workerSrc = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc.default
       const ab = await file.arrayBuffer()
-      const pdf = await pdfjsLib.getDocument({ data: ab }).promise
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(ab) })
+      const pdf = await loadingTask.promise
       const texts: string[] = []
       for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
         const page = await pdf.getPage(i)
@@ -357,7 +359,13 @@ async function analyze() {
   const domainContext = selectedDomains.value.length
     ? `\nUser is interested in: ${selectedDomains.value.map(id => DOMAIN_GUIDES.find(d => d.id === id)?.label).join(', ')}`
     : ''
-  const allInput = [userInput.value, urlInput.value, fileContent.value, domainContext].filter(Boolean).join('\n')
+  const fileContext = fileContent.value || (uploadedFile.value ? `[Uploaded file: ${uploadedFile.value.name}]` : '')
+  const allInput = [userInput.value, urlInput.value, fileContext, domainContext].filter(Boolean).join('\n')
+
+  if (!allInput.trim()) {
+    isAnalyzing.value = false
+    return
+  }
 
   // Try GPT first
   analyzeStatus.value = 'Connecting to AI...'
