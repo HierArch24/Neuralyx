@@ -137,7 +137,7 @@ function extractFromHTML(html: string, sourceUrl: string): ExtractedPage {
   return { title, description, ogImage, favicon, siteName, textContent }
 }
 
-async function callOpenAI(page: ExtractedPage, sourceUrl: string, apiKey: string): Promise<GeneratedArticle> {
+function buildPrompts(page: ExtractedPage, sourceUrl: string) {
   const systemPrompt = `You are Gabriel Alvin, an AI Systems Engineer who shares tech discoveries, tools, and industry news on his portfolio. You write in first person, sharing things you've found interesting, tools you're utilizing, or news you want to share with your audience.
 
 Your writing style:
@@ -185,42 +185,97 @@ Favicon/Logo: ${page.favicon}
 Page Content:
 ${page.textContent}`
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-5.2',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    }),
-  })
+  return { systemPrompt, userPrompt }
+}
 
-  if (!res.ok) {
-    const errText = await res.text()
-    throw new Error(`OpenAI API error ${res.status}: ${errText}`)
-  }
-
-  const data = await res.json()
-  const raw: string = data.choices[0].message.content.trim()
-
+function parseArticleResponse(raw: string, page: ExtractedPage, sourceUrl: string): GeneratedArticle {
   const jsonStr = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '')
   const article = JSON.parse(jsonStr) as GeneratedArticle
 
   if (!CATEGORIES.includes(article.category as typeof CATEGORIES[number])) {
     article.category = 'general'
   }
-
   if (!article.image_url && page.ogImage) {
     article.image_url = page.ogImage
   }
-
   article.link_url = sourceUrl
   return article
+}
+
+async function callOpenAI(page: ExtractedPage, sourceUrl: string, apiKey: string): Promise<GeneratedArticle> {
+  const { systemPrompt, userPrompt } = buildPrompts(page, sourceUrl)
+
+  // Try OpenAI first
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.2',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      const raw: string = data.choices[0].message.content.trim()
+      return parseArticleResponse(raw, page, sourceUrl)
+    }
+
+    // Check if quota/billing error — fall through to Gemini
+    const errText = await res.text()
+    const isQuotaError = errText.includes('insufficient_quota') || errText.includes('billing') || res.status === 429
+    if (!isQuotaError) {
+      throw new Error(`OpenAI API error ${res.status}: ${errText}`)
+    }
+    console.warn('OpenAI quota exceeded, falling back to Gemini...')
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : ''
+    if (msg.includes('OpenAI API error')) throw e
+    console.warn('OpenAI failed, trying Gemini:', msg)
+  }
+
+  // Fallback: Google Gemini
+  return callGemini(page, sourceUrl)
+}
+
+async function callGemini(page: ExtractedPage, sourceUrl: string): Promise<GeneratedArticle> {
+  const geminiKey = import.meta.env.VITE_GEMINI_KEY || ''
+  if (!geminiKey) {
+    throw new Error('OpenAI quota exceeded and no Gemini API key configured (VITE_GEMINI_KEY)')
+  }
+
+  const { systemPrompt, userPrompt } = buildPrompts(page, sourceUrl)
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: userPrompt }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 2000 },
+      }),
+    },
+  )
+
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Gemini API error ${res.status}: ${errText}`)
+  }
+
+  const data = await res.json()
+  const raw: string = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
+  if (!raw) throw new Error('Gemini returned empty response')
+
+  return parseArticleResponse(raw, page, sourceUrl)
 }
