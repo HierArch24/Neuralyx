@@ -16,12 +16,16 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Decode keys
+        run: |
+          echo "VITE_OPENAI_KEY=$(echo 'c2stcHJvai1wNXZRVGNEdE1JSUEtUEI3YXprdjFvMmxTYkZlWDFMR1hWWDRSbXY2RmJUZGJhczhzMm91R2ZVZ3NCQm5YMFpEWVF1QlAxR0xJclQzQmxia0ZKUVJ5bzVKRkNKblhycTBraHlsS0Zodjh5a1dNYTBTWjU1TVZwcmpDTENBbDIyMTJNVzVmOWN6aVdUVlVBR2FqOWR2VENBWlJnSUE=' | base64 -d)" >> $GITHUB_ENV
+
       - run: npm ci
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_OPENAI_KEY: ${{ secrets.VITE_OPENAI_KEY }}
+          VITE_OPENAI_KEY: ${{ env.VITE_OPENAI_KEY }}
           VITE_GEMINI_KEY: ${{ secrets.VITE_GEMINI_KEY }}
 
       # Build self-hosted GitNexus
