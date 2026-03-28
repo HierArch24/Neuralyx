@@ -20,27 +20,23 @@ interface ExtractedPage {
 }
 
 /**
- * Fetches a URL, extracts content, and uses OpenAI GPT-4o-mini to generate
- * a news article written as Gabriel Alvin sharing a discovery.
+ * Fetches a URL, extracts content, and uses OpenAI to generate a news article.
+ * Works both locally (MCP server) and online (CORS proxy fallbacks).
  */
 export async function generateNewsFromUrl(
   url: string,
   apiKey: string,
   onStatus?: (msg: string) => void,
 ): Promise<GeneratedArticle> {
-  // Step 1: Fetch URL content via CORS proxy
   onStatus?.('Fetching page content...')
   const html = await fetchWithProxy(url)
 
-  // Step 2: Extract metadata and text
   onStatus?.('Extracting metadata...')
   const extracted = extractFromHTML(html, url)
 
-  // Step 3: Generate article via OpenAI
   onStatus?.('Generating article with AI...')
   const article = await callOpenAI(extracted, url, apiKey)
 
-  // Step 4: If no image, try screenshot → DALL-E
   if (!article.image_url) {
     const { generateThumbnail } = await import('./generateThumbnail')
     const thumb = await generateThumbnail(
@@ -53,45 +49,44 @@ export async function generateNewsFromUrl(
 }
 
 async function fetchWithProxy(url: string): Promise<string> {
-  // Use our MCP API server as proxy (no CORS issues)
   const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+
+  // Try MCP server first (local Docker)
   try {
     const res = await fetch(`${mcpUrl}/api/fetch-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(5000),
     })
     if (res.ok) {
       const data = await res.json()
       return data.html
     }
   } catch {
-    // MCP server not available, try fallback
+    // MCP server not available — use fallbacks
   }
 
-  // Fallback: try direct fetch (works for CORS-enabled sites)
-  try {
-    const direct = await fetch(url, {
-      headers: { 'Accept': 'text/html' },
-    })
-    if (direct.ok) return await direct.text()
-  } catch {
-    // CORS blocked
-  }
-
-  // Fallback: CORS proxies
+  // Fallback: CORS proxies (works online)
   const proxies = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   ]
   for (const proxyUrl of proxies) {
     try {
-      const res = await fetch(proxyUrl)
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) })
       if (res.ok) return await res.text()
     } catch { /* try next */ }
   }
 
-  throw new Error('Failed to fetch URL. Make sure the MCP server is running (docker compose up -d).')
+  // Last resort: direct fetch (works for CORS-enabled sites)
+  try {
+    const direct = await fetch(url, { headers: { 'Accept': 'text/html' } })
+    if (direct.ok) return await direct.text()
+  } catch { /* CORS blocked */ }
+
+  throw new Error('Could not fetch page content. The site may be blocking requests.')
 }
 
 function extractFromHTML(html: string, sourceUrl: string): ExtractedPage {
@@ -112,7 +107,6 @@ function extractFromHTML(html: string, sourceUrl: string): ExtractedPage {
     || getMeta('name', 'twitter:description')
     || getMeta('name', 'description')
 
-  // Image: OG > twitter > apple-touch-icon > favicon
   let ogImage = getMeta('property', 'og:image')
     || getMeta('name', 'twitter:image')
     || getMeta('name', 'twitter:image:src')
@@ -125,28 +119,20 @@ function extractFromHTML(html: string, sourceUrl: string): ExtractedPage {
     if (icon) favicon = icon.getAttribute('href') || ''
   }
 
-  // Resolve relative URLs
   const base = new URL(sourceUrl)
   if (ogImage && !ogImage.startsWith('http')) ogImage = new URL(ogImage, base).href
   if (favicon && !favicon.startsWith('http')) favicon = new URL(favicon, base).href
 
   const siteName = getMeta('property', 'og:site_name') || base.hostname.replace('www.', '')
 
-  // Extract text content
-  // Remove non-content elements
   const clone = doc.body?.cloneNode(true) as HTMLElement
   if (clone) {
     clone.querySelectorAll('script, style, nav, footer, header, aside, [role="navigation"], [role="banner"]')
       .forEach(el => el.remove())
   }
 
-  let textContent = (clone?.textContent || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (textContent.length > 4000) {
-    textContent = textContent.slice(0, 4000) + '...'
-  }
+  let textContent = (clone?.textContent || '').replace(/\s+/g, ' ').trim()
+  if (textContent.length > 4000) textContent = textContent.slice(0, 4000) + '...'
 
   return { title, description, ogImage, favicon, siteName, textContent }
 }
@@ -224,22 +210,17 @@ ${page.textContent}`
   const data = await res.json()
   const raw: string = data.choices[0].message.content.trim()
 
-  // Parse JSON (strip markdown fences if GPT adds them)
   const jsonStr = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '')
   const article = JSON.parse(jsonStr) as GeneratedArticle
 
-  // Validate category
   if (!CATEGORIES.includes(article.category as typeof CATEGORIES[number])) {
     article.category = 'general'
   }
 
-  // Fallback to OG image
   if (!article.image_url && page.ogImage) {
     article.image_url = page.ogImage
   }
 
-  // Always include source URL
   article.link_url = sourceUrl
-
   return article
 }

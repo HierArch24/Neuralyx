@@ -1,6 +1,7 @@
 /**
  * Thumbnail generation pipeline for news articles.
- * Tries in order: 1) Screenshot of source URL  2) DALL-E generation  3) null
+ * Works both locally (via MCP server) and online (direct API calls).
+ * Tries in order: 1) Screenshot via microlink  2) DALL-E generation  3) null
  */
 
 const getMcpUrl = () => import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
@@ -11,9 +12,50 @@ export interface ThumbnailResult {
 }
 
 /**
- * Take a screenshot of a URL via the MCP server → microlink.io
+ * Check if MCP server is reachable (local Docker)
  */
-export async function screenshotUrl(sourceUrl: string): Promise<ThumbnailResult | null> {
+async function isMcpAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${getMcpUrl()}/api/health`, { signal: AbortSignal.timeout(2000) })
+    return res.ok
+  } catch {
+    // Also try a simple HEAD to uploads
+    try {
+      const res = await fetch(getMcpUrl(), { method: 'HEAD', signal: AbortSignal.timeout(2000) })
+      return res.ok || res.status === 404
+    } catch {
+      return false
+    }
+  }
+}
+
+/**
+ * Take a screenshot via microlink.io (works from anywhere)
+ */
+async function screenshotDirect(sourceUrl: string): Promise<string | null> {
+  try {
+    const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(sourceUrl)}&screenshot=true&meta=false&embed=screenshot.url`
+    const res = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) })
+    if (!res.ok) return null
+    // microlink with embed returns the image directly
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.startsWith('image/')) {
+      // Convert to blob URL or data URI
+      const blob = await res.blob()
+      return URL.createObjectURL(blob)
+    }
+    // If JSON response, extract screenshot URL
+    const data = await res.json()
+    return data?.data?.screenshot?.url || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Take a screenshot via MCP server (local Docker)
+ */
+async function screenshotViaMcp(sourceUrl: string): Promise<ThumbnailResult | null> {
   try {
     const res = await fetch(`${getMcpUrl()}/api/screenshot`, {
       method: 'POST',
@@ -29,9 +71,9 @@ export async function screenshotUrl(sourceUrl: string): Promise<ThumbnailResult 
 }
 
 /**
- * Proxy an external image URL through MCP server to store locally
+ * Proxy an external image URL through MCP server
  */
-export async function proxyImage(imageUrl: string): Promise<ThumbnailResult | null> {
+async function proxyViaMcp(imageUrl: string): Promise<ThumbnailResult | null> {
   try {
     const res = await fetch(`${getMcpUrl()}/api/proxy-image`, {
       method: 'POST',
@@ -72,7 +114,6 @@ export async function generateDalleImage(
   }
 
   const visual = CATEGORY_VISUALS[category] || CATEGORY_VISUALS.general
-
   const prompt = `Clean, modern tech blog thumbnail. Theme: ${visual}. Representing: "${title}". Style: minimal, professional, dark background with vibrant accent colors (purple, cyan, blue). No text, no words, no letters. Abstract tech illustration, 16:9 aspect ratio.`
 
   try {
@@ -101,11 +142,13 @@ export async function generateDalleImage(
     const dalleUrl = data.data?.[0]?.url
     if (!dalleUrl) return null
 
-    // Proxy through MCP to store permanently (DALL-E URLs expire)
-    const proxied = await proxyImage(dalleUrl)
-    if (proxied) return { url: proxied.url, method: 'dalle' }
+    // Try to proxy through MCP for permanent storage (local only)
+    if (await isMcpAvailable()) {
+      const proxied = await proxyViaMcp(dalleUrl)
+      if (proxied) return { url: proxied.url, method: 'dalle' }
+    }
 
-    // Fallback: return temporary DALL-E URL
+    // Online: use DALL-E URL directly (valid for ~1 hour, but saved to DB immediately)
     return { url: dalleUrl, method: 'dalle' }
   } catch {
     return null
@@ -114,6 +157,7 @@ export async function generateDalleImage(
 
 /**
  * Full pipeline: try screenshot → DALL-E → null
+ * Works both locally and on live deployment
  */
 export async function generateThumbnail(
   title: string,
@@ -123,11 +167,18 @@ export async function generateThumbnail(
   apiKey: string,
   onStatus?: (msg: string) => void,
 ): Promise<ThumbnailResult | null> {
-  // 1. Try screenshot of source URL
+  const mcpUp = await isMcpAvailable()
+
+  // 1. Try screenshot
   if (sourceUrl) {
     onStatus?.('Taking screenshot of source page...')
-    const screenshot = await screenshotUrl(sourceUrl)
-    if (screenshot) return screenshot
+    if (mcpUp) {
+      const screenshot = await screenshotViaMcp(sourceUrl)
+      if (screenshot) return screenshot
+    }
+    // Fallback: direct microlink (works online)
+    const directUrl = await screenshotDirect(sourceUrl)
+    if (directUrl) return { url: directUrl, method: 'screenshot' }
   }
 
   // 2. Try DALL-E generation
