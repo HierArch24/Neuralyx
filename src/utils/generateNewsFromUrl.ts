@@ -263,7 +263,7 @@ async function callOpenAI(page: ExtractedPage, sourceUrl: string, apiKey: string
 async function callGemini(page: ExtractedPage, sourceUrl: string): Promise<GeneratedArticle> {
   const geminiKey = import.meta.env.VITE_GEMINI_KEY || ''
   if (!geminiKey) {
-    throw new Error('OpenAI quota exceeded and no Gemini API key configured (VITE_GEMINI_KEY)')
+    throw new Error('OpenAI quota exceeded. Add credits at platform.openai.com or set a Gemini key (VITE_GEMINI_KEY).')
   }
 
   const { systemPrompt, userPrompt } = buildPrompts(page, sourceUrl)
