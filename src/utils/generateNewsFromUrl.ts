@@ -189,7 +189,16 @@ ${page.textContent}`
 }
 
 function parseArticleResponse(raw: string, page: ExtractedPage, sourceUrl: string): GeneratedArticle {
-  const jsonStr = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+  // Strip markdown code fences (```json ... ```) with flexible whitespace
+  let jsonStr = raw.trim()
+  jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```\s*$/, '')
+
+  // If still not valid JSON, try to extract JSON object
+  if (!jsonStr.startsWith('{')) {
+    const match = jsonStr.match(/\{[\s\S]*\}/)
+    if (match) jsonStr = match[0]
+  }
+
   const article = JSON.parse(jsonStr) as GeneratedArticle
 
   if (!CATEGORIES.includes(article.category as typeof CATEGORIES[number])) {
@@ -197,6 +206,10 @@ function parseArticleResponse(raw: string, page: ExtractedPage, sourceUrl: strin
   }
   if (!article.image_url && page.ogImage) {
     article.image_url = page.ogImage
+  }
+  // Ensure content is never empty — use summary as fallback
+  if (!article.content && article.summary) {
+    article.content = `<p>${article.summary}</p>`
   }
   article.link_url = sourceUrl
   return article
