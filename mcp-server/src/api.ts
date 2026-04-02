@@ -1039,6 +1039,74 @@ async function handleNurture(req: IncomingMessage, res: ServerResponse) {
   json(res, 200, { actions, total: actions.length, checked: applications.length })
 }
 
+// ─── 5 Parallel Detail-Fill Agents ───
+
+async function fillOneJob(job: { id: string; title: string; company: string; description?: string | null; location?: string | null; url?: string }): Promise<Record<string, unknown>> {
+  const desc = (job.description || '').slice(0, 1500)
+  const prompt = `Analyze this job posting. Return ONLY valid JSON:
+{
+  "role_type": "fullstack|ai_engineer|ml_engineer|devops|frontend|backend|data|mobile|other",
+  "company_bucket": "agency|startup|enterprise|recruiter|direct_client",
+  "company_type_detail": "outsourcing|product|consulting|staffing|saas|fintech|healthtech|edtech|ecommerce|government|nonprofit|other",
+  "apply_method": "platform_apply|company_website|email|easy_apply|external_ats",
+  "requires_registration": true/false,
+  "work_arrangement": "remote|hybrid|onsite|flexible",
+  "country": "2-letter country code or 'Remote'",
+  "match_score": 0-100 (for AI Systems Engineer with Vue,TypeScript,Python,Docker,OpenAI,Supabase,n8n,LangChain),
+  "skill_matches": ["matched skills"],
+  "skill_gaps": ["missing skills"],
+  "seniority": "junior|mid|senior|lead|principal",
+  "salary_estimate": "estimated range if not specified, or null",
+  "recommendation": "strong_match|good_match|moderate|weak|no_match"
+}`
+
+  const raw = await callAI(prompt, `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || ''}\nURL: ${job.url || ''}\nDescription: ${desc}`)
+  const jsonStr = raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '')
+  const match = jsonStr.match(/\{[\s\S]*\}/)
+  return match ? JSON.parse(match[0]) : {}
+}
+
+async function handleFillDetails(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { jobs } = body // Array of {id, title, company, description, location, url}
+  if (!jobs || !Array.isArray(jobs)) return json(res, 400, { error: 'jobs array required' })
+
+  const AGENT_COUNT = 5
+  const results: { id: string; data: Record<string, unknown> }[] = []
+  const errors: string[] = []
+  let processed = 0
+
+  // Split into 5 chunks for parallel processing
+  const chunkSize = Math.ceil(jobs.length / AGENT_COUNT)
+  const chunks: typeof jobs[] = []
+  for (let i = 0; i < jobs.length; i += chunkSize) {
+    chunks.push(jobs.slice(i, i + chunkSize))
+  }
+
+  // Process all 5 chunks in parallel
+  const agentResults = await Promise.allSettled(
+    chunks.map(async (chunk, agentIdx) => {
+      const agentResults: typeof results = []
+      for (const job of chunk) {
+        try {
+          const data = await fillOneJob(job)
+          agentResults.push({ id: job.id, data })
+          processed++
+        } catch (e) {
+          errors.push(`Agent ${agentIdx + 1}: ${job.title} failed`)
+        }
+      }
+      return agentResults
+    })
+  )
+
+  for (const r of agentResults) {
+    if (r.status === 'fulfilled') results.push(...r.value)
+  }
+
+  json(res, 200, { results, processed, total: jobs.length, agents_used: chunks.length, errors })
+}
+
 // ─── Full Agent Runner: Orchestrates Scout → Classify → Match pipeline ───
 
 async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
@@ -1174,6 +1242,11 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/jobs/nurture' && req.method === 'POST') {
     return handleNurture(req, res)
+  }
+
+  // 5 parallel detail-fill agents — processes jobs in batches
+  if (url.pathname === '/api/jobs/fill-details' && req.method === 'POST') {
+    return handleFillDetails(req, res)
   }
 
   // Parallel orchestration via AI service (AgentScope)

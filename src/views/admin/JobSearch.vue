@@ -4,6 +4,7 @@ import { useAdminStore } from '@/stores/admin'
 import type { JobListing } from '@/types/database'
 import { searchJobs } from '@/utils/jobSearchAgent'
 import { classifyJob, matchJob, generateCoverLetter } from '@/utils/jobClassifyAgent'
+import { getPlatform, countryFlag, fillJobDetails, buildUpdatePayload } from '@/utils/jobDetailAgents'
 
 const admin = useAdminStore()
 
@@ -34,27 +35,18 @@ const researching = ref(false)
 const companyResearch = ref<Record<string, unknown> | null>(null)
 const draftEmail = ref('')
 
+// Filters extra
+const filterCountry = ref('')
+
 // Bulk
 const selectedIds = ref<Set<string>>(new Set())
 const selectAll = ref(false)
 const scoring = ref(false)
 const scoreProgress = ref('')
+const filling = ref(false)
+const fillProgress = ref('')
 
-// Platform config with logos
-const PLATFORMS: Record<string, { label: string; color: string; bg: string }> = {
-  indeed: { label: 'Indeed', color: 'text-blue-400', bg: 'bg-blue-500/15' },
-  linkedin: { label: 'LinkedIn', color: 'text-sky-400', bg: 'bg-sky-500/15' },
-  glassdoor: { label: 'Glassdoor', color: 'text-green-400', bg: 'bg-green-500/15' },
-  ziprecruiter: { label: 'ZipRecruiter', color: 'text-emerald-400', bg: 'bg-emerald-500/15' },
-  google: { label: 'Google Jobs', color: 'text-red-300', bg: 'bg-red-500/15' },
-  remoteok: { label: 'RemoteOK', color: 'text-teal-400', bg: 'bg-teal-500/15' },
-  remotive: { label: 'Remotive', color: 'text-indigo-400', bg: 'bg-indigo-500/15' },
-  himalayas: { label: 'Himalayas', color: 'text-amber-400', bg: 'bg-amber-500/15' },
-  hackernews: { label: 'HN/YC', color: 'text-orange-400', bg: 'bg-orange-500/15' },
-  arbeitnow: { label: 'Arbeitnow', color: 'text-pink-400', bg: 'bg-pink-500/15' },
-  adzuna: { label: 'Adzuna', color: 'text-yellow-400', bg: 'bg-yellow-500/15' },
-  jsearch: { label: 'JSearch', color: 'text-blue-300', bg: 'bg-blue-500/15' },
-}
+// Use getPlatform from jobDetailAgents.ts (replaces inline PLATFORMS)
 
 onMounted(() => { admin.fetchJobListings(); admin.fetchJobProfile() })
 
@@ -76,6 +68,14 @@ const filteredJobs = computed(() => {
   if (filterStatus.value) jobs = jobs.filter(j => j.status === filterStatus.value)
   if (filterType.value) jobs = jobs.filter(j => j.job_type === filterType.value)
   if (filterLocation.value) jobs = jobs.filter(j => j.location?.toLowerCase().includes(filterLocation.value.toLowerCase()))
+  if (filterCountry.value) {
+    const c = filterCountry.value.toLowerCase()
+    jobs = jobs.filter(j => {
+      const loc = (j.location || '').toLowerCase()
+      const country = ((j.raw_data as Record<string, unknown>)?.country as string || '').toLowerCase()
+      return loc.includes(c) || country.includes(c)
+    })
+  }
   if (filterWFH.value) {
     jobs = jobs.filter(j => {
       const text = `${j.location || ''} ${j.job_type || ''} ${j.title || ''} ${j.description || ''}`.toLowerCase()
@@ -92,8 +92,41 @@ const filteredJobs = computed(() => {
 const totalPages = computed(() => Math.ceil(filteredJobs.value.length / perPage))
 const paginatedJobs = computed(() => filteredJobs.value.slice((currentPage.value - 1) * perPage, currentPage.value * perPage))
 
+// Country options from data
+const countryOptions = computed(() => {
+  const countries = new Map<string, number>()
+  for (const j of admin.jobListings) {
+    const c = ((j.raw_data as Record<string, unknown>)?.country as string) || ''
+    const loc = (j.location || '').toLowerCase()
+    let key = c || (loc.includes('philippines') || loc.includes('manila') ? 'PH' : loc.includes('remote') ? 'Remote' : loc.includes('united states') || loc.includes(', us') ? 'US' : '')
+    if (key) countries.set(key, (countries.get(key) || 0) + 1)
+  }
+  return [...countries.entries()].sort((a, b) => b[1] - a[1])
+})
+
 // Reset page on filter change
-watch([filterPlatform, filterStatus, filterType, filterWFH, filterLocation, sortBy], () => { currentPage.value = 1 })
+watch([filterPlatform, filterStatus, filterType, filterWFH, filterLocation, filterCountry, sortBy], () => { currentPage.value = 1 })
+
+// Fill all unfilled jobs with 5 parallel agents
+async function fillAllJobs() {
+  const unfilled = admin.jobListings.filter(j => j.match_score === null)
+  if (!unfilled.length) { fillProgress.value = 'All jobs already processed'; setTimeout(() => { fillProgress.value = '' }, 2000); return }
+  filling.value = true
+  fillProgress.value = `Processing ${unfilled.length} jobs with 5 AI agents...`
+  // Process in batches of 25
+  for (let i = 0; i < unfilled.length; i += 25) {
+    const batch = unfilled.slice(i, i + 25)
+    fillProgress.value = `Batch ${Math.floor(i / 25) + 1}: ${i + batch.length}/${unfilled.length}`
+    const { results } = await fillJobDetails(batch)
+    for (const r of results) {
+      try { await admin.updateRow('job_listings', r.id, buildUpdatePayload(r)) } catch { /* skip */ }
+    }
+  }
+  await admin.fetchJobListings()
+  filling.value = false
+  fillProgress.value = `Done! ${unfilled.length} jobs processed`
+  setTimeout(() => { fillProgress.value = '' }, 3000)
+}
 
 // ─── Actions ───
 async function doSearch() {
@@ -211,7 +244,7 @@ async function autoGenCoverLetter(job: JobListing) {
 function copyText(text: string) { globalThis.navigator.clipboard.writeText(text) }
 
 // ─── Helpers ───
-function p(platform: string) { return PLATFORMS[platform] || { label: platform, color: 'text-gray-400', bg: 'bg-gray-500/15' } }
+function p(platform: string) { return getPlatform(platform) }
 function rd(job: JobListing, key: string) { return ((job.raw_data as Record<string, unknown>)?.[key] as string) || '' }
 
 function formatSalary(j: JobListing) {
@@ -285,10 +318,18 @@ function matchColor(score: number | null) {
       <select v-model="sortBy" class="px-2.5 py-1.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-[11px] focus:border-cyber-purple focus:outline-none">
         <option value="created_at">Newest</option><option value="match_score">Best Match</option><option value="salary">Highest Salary</option>
       </select>
+      <select v-model="filterCountry" class="px-2.5 py-1.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-[11px] focus:border-cyber-purple focus:outline-none">
+        <option value="">All Countries</option>
+        <option v-for="[code, count] in countryOptions" :key="code" :value="code">{{ countryFlag(code) }} {{ code }} ({{ count }})</option>
+      </select>
       <label class="flex items-center gap-1.5 cursor-pointer px-2.5 py-1.5 rounded-lg transition-colors" :class="filterWFH ? 'bg-green-500/15 text-green-400' : 'bg-neural-700/50 text-gray-500'">
         <input type="checkbox" v-model="filterWFH" class="rounded border-neural-600 bg-neural-800 text-green-500 focus:ring-green-500 w-3 h-3" />
-        <span class="text-[11px] font-medium">WFH Only</span>
+        <span class="text-[11px] font-medium">WFH</span>
       </label>
+      <button @click="fillAllJobs" :disabled="filling" class="px-2.5 py-1.5 bg-yellow-500/15 text-yellow-400 rounded-lg text-[11px] font-medium hover:bg-yellow-500/25 disabled:opacity-50 flex items-center gap-1 shrink-0">
+        <span v-if="!filling">🤖 AI Fill All</span>
+        <span v-else>{{ fillProgress }}</span>
+      </button>
       <div class="ml-auto flex items-center gap-2 text-[10px] text-gray-500">
         <span>{{ filteredJobs.length }} jobs</span>
         <span v-if="totalPages > 1">· Page {{ currentPage }}/{{ totalPages }}</span>
@@ -320,6 +361,7 @@ function matchColor(score: number | null) {
             <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Where</th>
             <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Salary</th>
             <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Source</th>
+            <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Type</th>
             <th class="text-center px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Match</th>
             <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Posted</th>
             <th class="text-right px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Actions</th>
@@ -337,7 +379,11 @@ function matchColor(score: number | null) {
             </td>
             <td class="px-2 py-2 text-[10px] text-gray-400 max-w-[100px] truncate">{{ job.location || 'Remote' }}</td>
             <td class="px-2 py-2 text-[10px] whitespace-nowrap" :class="job.salary_min ? 'text-green-400' : 'text-gray-600'">{{ formatSalary(job) }}</td>
-            <td class="px-2 py-2"><span class="px-1.5 py-0.5 rounded text-[9px] font-medium capitalize" :class="p(job.platform).bg + ' ' + p(job.platform).color">{{ p(job.platform).label }}</span></td>
+            <td class="px-2 py-2"><span class="px-1.5 py-0.5 rounded text-[9px] font-medium capitalize" :class="p(job.platform).bg + ' ' + p(job.platform).color">{{ p(job.platform).emoji }} {{ p(job.platform).label }}</span></td>
+            <td class="px-2 py-2">
+              <span v-if="rd(job, 'company_bucket')" class="text-[9px] text-gray-500 capitalize">{{ rd(job, 'company_bucket').replace('_',' ') }}</span>
+              <span v-else class="text-[9px] text-gray-700">—</span>
+            </td>
             <td class="px-2 py-2 text-center"><span class="text-xs font-bold" :class="matchColor(job.match_score)">{{ job.match_score ? job.match_score + '%' : '—' }}</span></td>
             <td class="px-2 py-2 text-[10px] text-gray-500">{{ timeAgo(job.posted_at || job.created_at) }}</td>
             <td class="px-2 py-2 text-right" @click.stop>
