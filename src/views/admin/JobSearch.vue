@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import type { JobListing } from '@/types/database'
+import { searchJobs } from '@/utils/jobSearchAgent'
 
 const admin = useAdminStore()
 
@@ -63,31 +64,34 @@ async function doSearch() {
   if (!searchQuery.value.trim()) return
   searching.value = true
   searchError.value = ''
-  searchStatus.value = 'Searching across platforms...'
-  const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+  searchStatus.value = ''
+
   try {
-    const res = await fetch(`${mcpUrl}/api/jobs/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: searchQuery.value, location: searchLocation.value, job_type: searchType.value, platform: searchPlatform.value }),
-      signal: AbortSignal.timeout(30000),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      searchStatus.value = `Found ${data.jobs?.length || 0} jobs. Saving...`
-      for (const job of data.jobs || []) {
-        try { await admin.insertRow('job_listings', job) } catch { /* dup */ }
+    const { jobs, errors } = await searchJobs(
+      { query: searchQuery.value, location: searchLocation.value, job_type: searchType.value, platform: searchPlatform.value },
+      (msg) => { searchStatus.value = msg },
+    )
+
+    if (errors.length > 0 && jobs.length === 0) {
+      searchError.value = errors.join('\n')
+    } else {
+      // Save results to Supabase
+      searchStatus.value = `Saving ${jobs.length} jobs to database...`
+      let saved = 0
+      for (const job of jobs) {
+        try {
+          await admin.insertRow('job_listings', job as unknown as Record<string, unknown>)
+          saved++
+        } catch { /* duplicate or error */ }
       }
       await admin.fetchJobListings()
-      searchStatus.value = ''
-    } else {
-      searchError.value = 'Search API returned an error. Check MCP server configuration.'
+      searchStatus.value = saved > 0 ? `Saved ${saved} new jobs` : `Found ${jobs.length} jobs (all already in database)`
+      setTimeout(() => { searchStatus.value = '' }, 3000)
     }
-  } catch {
-    searchError.value = 'Could not reach search API. Run the MCP server or configure JSearch API key.'
+  } catch (e) {
+    searchError.value = e instanceof Error ? e.message : 'Search failed'
   } finally {
     searching.value = false
-    searchStatus.value = ''
   }
 }
 

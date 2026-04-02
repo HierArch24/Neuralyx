@@ -39,6 +39,9 @@ services:
       - SUPABASE_URL=${VITE_SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - UPLOADS_DIR=/app/uploads
+      - JSEARCH_API_KEY=${JSEARCH_API_KEY:-}
+      - ADZUNA_APP_ID=${ADZUNA_APP_ID:-}
+      - ADZUNA_APP_KEY=${ADZUNA_APP_KEY:-}
     volumes:
       - uploads_data:/app/uploads
     depends_on:

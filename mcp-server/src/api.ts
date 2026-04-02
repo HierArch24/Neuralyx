@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 
 const PORT = Number(process.env.PORT || 8080)
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/app/uploads'
+const JSEARCH_API_KEY = process.env.JSEARCH_API_KEY || ''
 
 // Ensure uploads directory exists
 await mkdir(UPLOADS_DIR, { recursive: true })
@@ -260,6 +261,137 @@ async function handleProxyImage(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
+// ─── Scout Agent: Job Search ───
+
+interface NormalizedJob {
+  platform: string
+  external_id: string
+  title: string
+  company: string
+  location: string | null
+  salary_min: number | null
+  salary_max: number | null
+  salary_currency: string
+  job_type: string | null
+  description: string | null
+  requirements: string | null
+  url: string
+  posted_at: string | null
+  status: string
+}
+
+async function searchJSearch(query: string, location: string, page: number = 1): Promise<NormalizedJob[]> {
+  if (!JSEARCH_API_KEY) return []
+  try {
+    const params = new URLSearchParams({
+      query: location ? `${query} in ${location}` : query,
+      page: String(page),
+      num_pages: '1',
+      date_posted: 'month',
+    })
+    const res = await fetch(`https://jsearch.p.rapidapi.com/search?${params}`, {
+      headers: {
+        'X-RapidAPI-Key': JSEARCH_API_KEY,
+        'X-RapidAPI-Host': 'jsearch.p.rapidapi.com',
+      },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.data || []).map((j: any) => ({
+      platform: (j.job_publisher || 'google').toLowerCase().replace(/\.com$/, '').replace(/\s+/g, ''),
+      external_id: j.job_id || null,
+      title: j.job_title || 'Untitled',
+      company: j.employer_name || 'Unknown',
+      location: [j.job_city, j.job_state, j.job_country].filter(Boolean).join(', ') || null,
+      salary_min: j.job_min_salary || null,
+      salary_max: j.job_max_salary || null,
+      salary_currency: j.job_salary_currency || 'USD',
+      job_type: j.job_employment_type?.toLowerCase().replace('_', '-') || null,
+      description: (j.job_description || '').slice(0, 5000) || null,
+      requirements: j.job_highlights?.Qualifications?.join('\n') || null,
+      url: j.job_apply_link || j.job_google_link || '',
+      posted_at: j.job_posted_at_datetime_utc || null,
+      status: 'new',
+    }))
+  } catch (e) {
+    console.error('[Scout] JSearch error:', e)
+    return []
+  }
+}
+
+async function searchAdzuna(query: string, location: string): Promise<NormalizedJob[]> {
+  const appId = process.env.ADZUNA_APP_ID || ''
+  const appKey = process.env.ADZUNA_APP_KEY || ''
+  if (!appId || !appKey) return []
+  try {
+    // Default to Philippines (ph), can be made configurable
+    const country = 'gb' // adzuna doesn't have 'ph', use 'gb' or configurable
+    const params = new URLSearchParams({
+      app_id: appId, app_key: appKey,
+      what: query, results_per_page: '20',
+    })
+    if (location) params.set('where', location)
+    const res = await fetch(`https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params}`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.results || []).map((j: any) => ({
+      platform: 'adzuna',
+      external_id: j.id ? String(j.id) : null,
+      title: j.title || 'Untitled',
+      company: j.company?.display_name || 'Unknown',
+      location: j.location?.display_name || null,
+      salary_min: j.salary_min || null,
+      salary_max: j.salary_max || null,
+      salary_currency: 'GBP',
+      job_type: j.contract_time || null,
+      description: (j.description || '').slice(0, 5000) || null,
+      requirements: null,
+      url: j.redirect_url || '',
+      posted_at: j.created || null,
+      status: 'new',
+    }))
+  } catch (e) {
+    console.error('[Scout] Adzuna error:', e)
+    return []
+  }
+}
+
+async function handleJobSearch(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { query, location, platform } = body
+  if (!query) return json(res, 400, { error: 'query is required' })
+
+  const results: NormalizedJob[] = []
+  const errors: string[] = []
+
+  // Search JSearch (covers Indeed, LinkedIn, Glassdoor, ZipRecruiter, Google)
+  if (!platform || ['indeed', 'linkedin', 'glassdoor', 'ziprecruiter', 'google'].includes(platform)) {
+    try {
+      const jsearchResults = await searchJSearch(query, location || '')
+      results.push(...jsearchResults)
+    } catch { errors.push('JSearch failed') }
+  }
+
+  // Search Adzuna (EU/UK coverage)
+  if (!platform || platform === 'adzuna') {
+    try {
+      const adzunaResults = await searchAdzuna(query, location || '')
+      results.push(...adzunaResults)
+    } catch { errors.push('Adzuna failed') }
+  }
+
+  // Deduplicate by title + company (case-insensitive)
+  const seen = new Set<string>()
+  const deduped = results.filter(j => {
+    const key = `${j.title.toLowerCase().trim()}::${j.company.toLowerCase().trim()}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  json(res, 200, { jobs: deduped, total: deduped.length, errors })
+}
+
 const server = createServer(async (req, res) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -283,6 +415,10 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/proxy-image' && req.method === 'POST') {
     return handleProxyImage(req, res)
+  }
+
+  if (url.pathname === '/api/jobs/search' && req.method === 'POST') {
+    return handleJobSearch(req, res)
   }
 
   // Serve uploaded images
