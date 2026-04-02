@@ -666,6 +666,171 @@ async function handleJobSearch(req: IncomingMessage, res: ServerResponse) {
   json(res, 200, { jobs: deduped, total: deduped.length, sources, errors })
 }
 
+// ─── Classifier Agent: Role Type + Company Bucket Detection ───
+
+const GEMINI_KEY = process.env.VITE_GEMINI_KEY || process.env.GEMINI_KEY || ''
+const OPENAI_KEY = process.env.VITE_OPENAI_KEY || process.env.OPENAI_KEY || ''
+
+async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
+  // Try OpenAI first
+  if (OPENAI_KEY) {
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini', messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ], temperature: 0.3, max_tokens: 500,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        return data.choices[0].message.content.trim()
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Fallback: Gemini
+  if (GEMINI_KEY) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ parts: [{ text: userPrompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 500 },
+        }),
+      },
+    )
+    if (res.ok) {
+      const data = await res.json()
+      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
+    }
+  }
+
+  throw new Error('No AI provider available (set OPENAI_KEY or GEMINI_KEY)')
+}
+
+async function handleClassifyJob(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { title, company, description } = body
+  if (!title) return json(res, 400, { error: 'title is required' })
+
+  const systemPrompt = `You classify job postings. Return ONLY valid JSON with no markdown fences.
+
+Classify into:
+1. "role_type": one of "fullstack", "ai_engineer", "ml_engineer", "devops", "frontend", "backend", "mobile", "data", "freelance", "other"
+2. "company_bucket": one of "agency" (outsourcing/staffing/dev shop), "startup" (product company <200 people), "enterprise" (large corp), "recruiter" (staffing/talent agency), "direct_client" (freelance/consulting)
+3. "confidence": 0-100 how confident you are
+
+Return: {"role_type":"...","company_bucket":"...","confidence":85}`
+
+  const userPrompt = `Title: ${title}\nCompany: ${company || 'Unknown'}\nDescription: ${(description || '').slice(0, 1500)}`
+
+  try {
+    const raw = await callAI(systemPrompt, userPrompt)
+    const jsonStr = raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '')
+    const match = jsonStr.match(/\{[\s\S]*\}/)
+    const result = match ? JSON.parse(match[0]) : { role_type: 'other', company_bucket: 'startup', confidence: 50 }
+    json(res, 200, result)
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Classification failed'
+    json(res, 500, { error: msg })
+  }
+}
+
+// ─── Matcher Agent: Hybrid Scoring ───
+
+async function handleMatchJob(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { title, company, description, requirements, resume_text, skills, preferred_job_types, preferred_locations } = body
+  if (!title) return json(res, 400, { error: 'title is required' })
+
+  const systemPrompt = `You are a job matching AI. Score how well a candidate matches a job posting.
+
+Return ONLY valid JSON with no markdown fences:
+{
+  "match_score": 0-100,
+  "skill_matches": ["skill1", "skill2"],
+  "skill_gaps": ["missing1", "missing2"],
+  "reasons": ["reason1", "reason2"],
+  "recommendation": "strong_match" | "good_match" | "moderate" | "weak" | "no_match"
+}`
+
+  const jobText = `JOB: ${title} at ${company || 'Unknown'}
+${description ? 'Description: ' + (description as string).slice(0, 2000) : ''}
+${requirements ? 'Requirements: ' + requirements : ''}`
+
+  const candidateText = `CANDIDATE:
+Skills: ${(skills || []).join(', ') || 'Not specified'}
+Resume: ${(resume_text || '').slice(0, 1500) || 'Not provided'}
+Preferred types: ${(preferred_job_types || []).join(', ') || 'Any'}
+Preferred locations: ${(preferred_locations || []).join(', ') || 'Any'}`
+
+  try {
+    const raw = await callAI(systemPrompt, `${jobText}\n\n${candidateText}`)
+    const jsonStr = raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '')
+    const match = jsonStr.match(/\{[\s\S]*\}/)
+    const result = match ? JSON.parse(match[0]) : { match_score: 50, skill_matches: [], skill_gaps: [], reasons: [], recommendation: 'moderate' }
+    json(res, 200, result)
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Matching failed'
+    json(res, 500, { error: msg })
+  }
+}
+
+// ─── Writer Agent: Cover Letter Generation ───
+
+async function handleCoverLetter(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { title, company, description, resume_text, skills, role_type, company_bucket } = body
+  if (!title || !company) return json(res, 400, { error: 'title and company are required' })
+
+  // Portfolio signals based on role type
+  const signalMap: Record<string, string> = {
+    fullstack: 'NEURALYX portfolio platform (Vue 3 + TypeScript + Supabase), admin dashboard with full CRUD, Docker deployment pipeline',
+    ai_engineer: 'AI-powered news generator (GPT/Gemini), DALL-E thumbnail pipeline, MCP server architecture, job application AI agent system',
+    ml_engineer: 'Neural Network certificates, Deep Learning Keras training, Machine Learning Expert (Matlab), data science coursework',
+    devops: 'Docker Compose multi-service setup (PostgreSQL, Nginx, Node.js), GitHub Actions CI/CD pipeline, cPanel deployment automation',
+    frontend: 'Vue 3 + TypeScript + Tailwind CSS v4, GSAP scroll animations, responsive design, Pinia state management',
+    backend: 'Supabase PostgreSQL, Node.js MCP server, REST API design, Docker containerization',
+  }
+  const portfolioSignals = signalMap[role_type || 'fullstack'] || signalMap.fullstack
+
+  const systemPrompt = `You are Gabriel Alvin, an AI Systems Engineer writing a cover letter. You position yourself as a Solution Engineer who designs, builds, and deploys end-to-end systems — NOT just a coder.
+
+Writing style:
+- Professional but personable
+- Lead with SYSTEM DESIGN capability, not individual skills
+- Reference specific projects from your portfolio
+- Show you understand the company's needs
+- 3-4 paragraphs, concise
+
+Portfolio highlights to reference: ${portfolioSignals}
+
+Return the cover letter as plain text (no JSON, no markdown fences).`
+
+  const userPrompt = `Write a cover letter for:
+Company: ${company}
+Role: ${title}
+Company type: ${company_bucket || 'unknown'}
+Job description: ${(description || '').slice(0, 2000)}
+My skills: ${(skills || []).join(', ')}
+My resume: ${(resume_text || '').slice(0, 1000)}`
+
+  try {
+    const coverLetter = await callAI(systemPrompt, userPrompt)
+    json(res, 200, { cover_letter: coverLetter })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Cover letter generation failed'
+    json(res, 500, { error: msg })
+  }
+}
+
 const server = createServer(async (req, res) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -693,6 +858,18 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/jobs/search' && req.method === 'POST') {
     return handleJobSearch(req, res)
+  }
+
+  if (url.pathname === '/api/jobs/classify' && req.method === 'POST') {
+    return handleClassifyJob(req, res)
+  }
+
+  if (url.pathname === '/api/jobs/match' && req.method === 'POST') {
+    return handleMatchJob(req, res)
+  }
+
+  if (url.pathname === '/api/jobs/cover-letter' && req.method === 'POST') {
+    return handleCoverLetter(req, res)
   }
 
   // Serve uploaded images

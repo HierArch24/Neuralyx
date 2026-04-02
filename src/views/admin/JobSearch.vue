@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import type { JobListing } from '@/types/database'
 import { searchJobs } from '@/utils/jobSearchAgent'
+import { classifyJob, matchJob } from '@/utils/jobClassifyAgent'
 
 const admin = useAdminStore()
 
@@ -22,6 +23,61 @@ const sortBy = ref('created_at')
 // Detail modal
 const showDetail = ref(false)
 const detailJob = ref<JobListing | null>(null)
+
+// AI Scoring
+const scoring = ref(false)
+const scoreProgress = ref('')
+const scoringJobId = ref<string | null>(null)
+
+async function scoreAllJobs() {
+  await admin.fetchJobProfile()
+  const profile = admin.jobProfile[0] || null
+  const unscored = admin.jobListings.filter(j => j.match_score === null && j.status === 'new')
+  if (unscored.length === 0) { scoreProgress.value = 'All jobs already scored'; setTimeout(() => { scoreProgress.value = '' }, 2000); return }
+
+  scoring.value = true
+  let done = 0
+  for (const job of unscored) {
+    scoreProgress.value = `Scoring ${++done}/${unscored.length}: ${job.title.slice(0, 40)}...`
+    try {
+      // Classify
+      const classify = await classifyJob(job.title, job.company, job.description || undefined)
+      // Match
+      const matchResult = await matchJob(
+        { title: job.title, company: job.company, description: job.description, requirements: job.requirements },
+        { resume_text: profile?.resume_text, skills: profile?.skills, preferred_job_types: profile?.preferred_job_types, preferred_locations: profile?.preferred_locations },
+      )
+      // Update DB
+      const updates: Record<string, unknown> = { match_score: matchResult.match_score }
+      if (classify.role_type) updates.raw_data = { ...((job.raw_data as Record<string, unknown>) || {}), role_type: classify.role_type, company_bucket: classify.company_bucket, confidence: classify.confidence, skill_matches: matchResult.skill_matches, skill_gaps: matchResult.skill_gaps, recommendation: matchResult.recommendation }
+      await admin.updateRow('job_listings', job.id, updates)
+    } catch { /* skip on error */ }
+  }
+  await admin.fetchJobListings()
+  scoring.value = false
+  scoreProgress.value = `Scored ${done} jobs`
+  setTimeout(() => { scoreProgress.value = '' }, 3000)
+}
+
+async function scoreOneJob(job: JobListing) {
+  scoringJobId.value = job.id
+  await admin.fetchJobProfile()
+  const profile = admin.jobProfile[0] || null
+  try {
+    const classify = await classifyJob(job.title, job.company, job.description || undefined)
+    const matchResult = await matchJob(
+      { title: job.title, company: job.company, description: job.description, requirements: job.requirements },
+      { resume_text: profile?.resume_text, skills: profile?.skills, preferred_job_types: profile?.preferred_job_types, preferred_locations: profile?.preferred_locations },
+    )
+    const updates: Record<string, unknown> = {
+      match_score: matchResult.match_score,
+      raw_data: { ...((job.raw_data as Record<string, unknown>) || {}), role_type: classify.role_type, company_bucket: classify.company_bucket, skill_matches: matchResult.skill_matches, skill_gaps: matchResult.skill_gaps, recommendation: matchResult.recommendation },
+    }
+    await admin.updateRow('job_listings', job.id, updates)
+    await admin.fetchJobListings()
+  } catch { /* error */ }
+  scoringJobId.value = null
+}
 
 const PLATFORMS = [
   { id: 'linkedin', label: 'LinkedIn', icon: '🟦' },
@@ -212,6 +268,24 @@ function timeAgo(d: string) {
       <p v-if="searchError" class="text-xs text-red-400 mt-2">{{ searchError }}</p>
     </div>
 
+    <!-- AI Score Banner -->
+    <div v-if="admin.jobListings.filter(j => j.match_score === null && j.status === 'new').length > 0" class="glass-dark rounded-xl p-4 border border-yellow-500/20 mb-6 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-lg">🎯</span>
+        <div>
+          <p class="text-sm text-white font-medium">{{ admin.jobListings.filter(j => j.match_score === null && j.status === 'new').length }} unscored jobs</p>
+          <p class="text-[10px] text-gray-500">AI will classify role type, company bucket, and compute match score</p>
+        </div>
+      </div>
+      <button @click="scoreAllJobs" :disabled="scoring"
+        class="px-4 py-2 bg-gradient-to-r from-yellow-600 to-orange-500 text-white rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2 shrink-0">
+        <svg v-if="!scoring" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+        <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+        {{ scoring ? 'Scoring...' : 'Score All with AI' }}
+      </button>
+    </div>
+    <p v-if="scoreProgress" class="text-xs text-yellow-400 mb-4">{{ scoreProgress }}</p>
+
     <!-- Results -->
     <div v-if="displayJobs.length === 0" class="text-center py-16 glass-dark rounded-xl border border-neural-700/50">
       <div class="text-4xl mb-3">🔍</div>
@@ -256,6 +330,11 @@ function timeAgo(d: string) {
               <div class="flex items-center justify-end gap-0.5">
                 <button @click="viewDetail(job)" class="p-1.5 rounded-lg hover:bg-neural-600 text-gray-500 hover:text-white transition-colors" title="Details">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                </button>
+                <button v-if="!job.match_score" @click="scoreOneJob(job)" :disabled="scoringJobId === job.id"
+                  class="p-1.5 rounded-lg hover:bg-yellow-900/30 text-gray-500 hover:text-yellow-400 transition-colors" title="AI Score">
+                  <svg v-if="scoringJobId !== job.id" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                  <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 </button>
                 <button v-if="job.status === 'new'" @click="saveJob(job)" class="p-1.5 rounded-lg hover:bg-yellow-900/30 text-gray-500 hover:text-yellow-400 transition-colors" title="Save">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
