@@ -1092,18 +1092,23 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
     const classifyPrompt = 'Classify job. Return JSON: {"role_type":"fullstack|ai_engineer|ml_engineer|devops|frontend|backend|other","company_bucket":"agency|startup|enterprise|recruiter|direct_client","match_score":0-100}. Score based on: AI Systems Engineer, 8 years experience, Vue.js, TypeScript, Python, Docker, OpenAI, Supabase, n8n.'
 
     // Process top 30 jobs max to avoid timeout
+    const minRequired = min_score || 60
     const toProcess = allJobs.slice(0, 30)
+    let discarded = 0
     for (const job of toProcess) {
       try {
         const raw = await callAI(classifyPrompt, `Title: ${job.title}\nCompany: ${job.company}\nDesc: ${(job.description || '').slice(0, 800)}`)
         const parsed = JSON.parse(raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '').match(/\{[\s\S]*\}/)?.[0] || '{}')
         if (parsed.match_score) {
           job.match_score = parsed.match_score
-          if (parsed.match_score >= (min_score || 50)) matched++
+          if (parsed.match_score >= minRequired) matched++
+          else discarded++
         }
       } catch { /* skip */ }
     }
-    logs.push({ step: 'classify_match', status: 'completed', message: `Classified ${toProcess.length} jobs, ${matched} matched in ${Date.now() - matchStart}ms`, jobs_found: 0, jobs_matched: matched, jobs_applied: 0 })
+    // Remove low-scoring jobs (below threshold) — don't save them
+    allJobs = allJobs.filter(j => j.match_score === null || j.match_score >= minRequired)
+    logs.push({ step: 'classify_match', status: 'completed', message: `Classified ${toProcess.length}, ${matched} matched (≥${minRequired}%), ${discarded} discarded in ${Date.now() - matchStart}ms`, jobs_found: 0, jobs_matched: matched, jobs_applied: 0 })
   } else {
     logs.push({ step: 'classify_match', status: 'skipped', message: 'No AI provider configured', jobs_found: 0, jobs_matched: 0, jobs_applied: 0 })
   }

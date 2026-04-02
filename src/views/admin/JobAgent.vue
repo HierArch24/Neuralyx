@@ -9,6 +9,7 @@ const agentStatus = ref('')
 
 const searchQuery = ref('AI engineer')
 const searchLocation = ref('')
+const minScore = ref(80)
 
 const PLATFORMS = [
   { id: 'himalayas', name: 'Himalayas', enabled: true, icon: '⛰️' },
@@ -62,7 +63,7 @@ async function runAgent() {
         query: searchQuery.value,
         location: searchLocation.value,
         platforms: Object.entries(platformToggles.value).filter(([, v]) => v).map(([k]) => k),
-        min_score: 50,
+        min_score: minScore.value,
         resume_text: profile?.resume_text || '',
         skills: profile?.skills || [],
         preferred_job_types: profile?.preferred_job_types || [],
@@ -136,10 +137,14 @@ function stepIcon(step: string) {
           <input v-model="searchQuery" placeholder="AI Engineer, Vue Developer..."
             class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
         </div>
-        <div class="w-44">
+        <div class="w-36">
           <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Location</label>
           <input v-model="searchLocation" placeholder="Philippines, Remote..."
             class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
+        </div>
+        <div class="w-28">
+          <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Min Match {{ minScore }}%</label>
+          <input v-model.number="minScore" type="range" min="50" max="100" step="5" class="w-full" />
         </div>
         <button @click="runAgent" :disabled="agentRunning"
           class="px-5 py-2 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2 shrink-0">
