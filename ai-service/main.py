@@ -237,31 +237,64 @@ def chunk_text(text: str, chunk_size: int = 200, overlap: int = 30) -> list[str]
     return chunks if chunks else [text[:1000]]
 
 
+domain_embeddings: dict[str, np.ndarray] = {}
+exclude_embedding: np.ndarray | None = None
+
+# Your expertise domains — each gets its own embedding vector
+DEFAULT_DOMAINS = {
+    "ai_automation": "AI automation engineer, workflow automation, n8n, Zapier, Make, AI pipelines, intelligent automation, RPA, process automation",
+    "business_automation": "Business automation, CRM integration, ERP, GoHighLevel, business process optimization, SaaS automation, API integration",
+    "marketing_automation": "Marketing automation, SEO, content generation, lead generation, email marketing, social media automation, analytics, campaign optimization",
+    "fullstack_dev": "Full stack developer, Vue.js, TypeScript, Node.js, Python, FastAPI, React, PostgreSQL, Supabase, Docker, REST API, web application development",
+    "devops_mlops": "DevOps engineer, MLOps, Docker, Kubernetes, CI/CD, GitHub Actions, AWS, cloud infrastructure, deployment automation, nginx",
+    "ai_ml": "AI engineer, machine learning, deep learning, PyTorch, TensorFlow, LangChain, CrewAI, OpenAI, LLM, NLP, RAG, vector databases, embeddings",
+    "ai_chatbot": "AI chatbot development, conversational AI, chatbot design, NLU, dialogue systems, Claude API, OpenAI API, virtual assistant",
+    "system_integration": "System integration, MCP servers, API design, microservices, Supabase, database design, PostgreSQL, middleware, data pipelines",
+    "data_analytics": "Data analytics, data science, Python, pandas, SQL, business intelligence, dashboard development, data visualization, reporting",
+}
+
+# Skills to EXCLUDE — jobs heavily requiring these get penalized
+DEFAULT_EXCLUDES = ".NET, ASP.NET, C# backend, Windows Forms, WPF, Blazor, Entity Framework, MAUI, Xamarin, Java Spring Boot, Angular (not React/Vue), SAP, Oracle DBA, COBOL, Fortran, receptionist, data entry clerk, customer service representative, call center agent, cashier, driver, janitor, security guard"
+
 class IndexResumeRequest(BaseModel):
     resume_text: str
     skills: list[str] = []
+    domains: dict[str, str] = {}
+    exclude_skills: str = ""
 
 class IndexResumeResponse(BaseModel):
     embedded: bool
     dimensions: int = 0
-    chunks: int = 0
+    domains_indexed: int = 0
 
 @app.post("/semantic/index-resume", response_model=IndexResumeResponse)
 async def index_resume(req: IndexResumeRequest):
-    """Embed and index the user's resume for matching"""
-    global resume_embedding
+    """Embed resume as domain-specific vectors for targeted matching"""
+    global resume_embedding, domain_embeddings, exclude_embedding
     try:
-        # Combine resume + skills into one rich text
-        full_text = req.resume_text + "\n\nKey Skills: " + ", ".join(req.skills)
-        chunks = chunk_text(full_text, chunk_size=150, overlap=20)
-        # Embed all chunks and average
         model = get_embedding_model()
         if model is None:
             return IndexResumeResponse(embedded=False)
-        embeddings = model.encode(chunks, normalize_embeddings=True)
-        resume_embedding = np.mean(embeddings, axis=0).astype('float32')
+
+        # Use provided domains or defaults
+        domains = req.domains if req.domains else DEFAULT_DOMAINS
+        excludes = req.exclude_skills if req.exclude_skills else DEFAULT_EXCLUDES
+
+        # Embed each domain separately
+        domain_embeddings = {}
+        for key, description in domains.items():
+            emb = model.encode([description], normalize_embeddings=True)[0]
+            domain_embeddings[key] = emb.astype('float32')
+
+        # Embed exclusion terms
+        exclude_embedding = model.encode([excludes], normalize_embeddings=True)[0].astype('float32')
+
+        # Also create combined resume embedding (weighted average of domains)
+        all_domain_embs = np.array(list(domain_embeddings.values()))
+        resume_embedding = np.mean(all_domain_embs, axis=0).astype('float32')
         resume_embedding = resume_embedding / np.linalg.norm(resume_embedding)
-        return IndexResumeResponse(embedded=True, dimensions=len(resume_embedding), chunks=len(chunks))
+
+        return IndexResumeResponse(embedded=True, dimensions=len(resume_embedding), domains_indexed=len(domain_embeddings))
     except Exception as e:
         return IndexResumeResponse(embedded=False)
 
@@ -274,10 +307,33 @@ class IndexJobsResponse(BaseModel):
     total: int
     dimensions: int = 0
 
+## Old index_jobs replaced by index_jobs_v2 below (with embedding cache for domain matching)
+
+
+class MatchRequest(BaseModel):
+    top_k: int = 50
+    min_score: float = 0.3
+
+class MatchResult(BaseModel):
+    id: str
+    score: float  # 0-100
+    best_domain: str = ""
+    domain_scores: dict[str, float] = {}
+    excluded: bool = False
+
+class MatchResponse(BaseModel):
+    matches: list[MatchResult]
+    excluded_count: int = 0
+    total_indexed: int = 0
+    resume_indexed: bool = False
+
+# Store job embeddings for domain matching
+job_embeddings_cache: dict[str, np.ndarray] = {}
+
 @app.post("/semantic/index-jobs", response_model=IndexJobsResponse)
-async def index_jobs(req: IndexJobsRequest):
-    """Build FAISS index from job descriptions"""
-    global faiss_index, faiss_job_ids
+async def index_jobs_v2(req: IndexJobsRequest):
+    """Build FAISS index + cache individual embeddings for domain matching"""
+    global faiss_index, faiss_job_ids, job_embeddings_cache
     try:
         import faiss
         model = get_embedding_model()
@@ -297,8 +353,12 @@ async def index_jobs(req: IndexJobsRequest):
         embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         embeddings = np.array(embeddings).astype('float32')
 
+        # Cache individual embeddings
+        for i, job_id in enumerate(ids):
+            job_embeddings_cache[job_id] = embeddings[i]
+
         dim = embeddings.shape[1]
-        faiss_index = faiss.IndexFlatIP(dim)  # Inner product = cosine similarity (normalized)
+        faiss_index = faiss.IndexFlatIP(dim)
         faiss_index.add(embeddings)
         faiss_job_ids = ids
 
@@ -306,41 +366,59 @@ async def index_jobs(req: IndexJobsRequest):
     except Exception as e:
         return IndexJobsResponse(indexed=0, total=len(req.jobs))
 
-
-class MatchRequest(BaseModel):
-    top_k: int = 50
-    min_score: float = 0.3
-
-class MatchResult(BaseModel):
-    id: str
-    score: float  # 0-100
-
-class MatchResponse(BaseModel):
-    matches: list[MatchResult]
-    total_indexed: int = 0
-    resume_indexed: bool = False
-
 @app.post("/semantic/match", response_model=MatchResponse)
 async def semantic_match(req: MatchRequest):
-    """Find top matching jobs using FAISS cosine similarity"""
-    global faiss_index, faiss_job_ids, resume_embedding
-    if faiss_index is None or resume_embedding is None:
-        return MatchResponse(matches=[], resume_indexed=resume_embedding is not None, total_indexed=len(faiss_job_ids))
+    """Domain-weighted semantic matching with exclusion filtering"""
+    global faiss_index, faiss_job_ids, domain_embeddings, exclude_embedding, job_embeddings_cache
+
+    if not faiss_job_ids or not domain_embeddings:
+        return MatchResponse(matches=[], resume_indexed=bool(domain_embeddings), total_indexed=len(faiss_job_ids))
 
     try:
-        import faiss
-        query = resume_embedding.reshape(1, -1).astype('float32')
-        scores, indices = faiss_index.search(query, min(req.top_k, len(faiss_job_ids)))
-
         matches = []
-        for score, idx in zip(scores[0], indices[0]):
-            if idx < 0 or idx >= len(faiss_job_ids):
-                continue
-            pct = round(float(score) * 100, 1)  # cosine similarity → percentage
-            if pct >= req.min_score * 100:
-                matches.append(MatchResult(id=faiss_job_ids[idx], score=pct))
+        excluded_count = 0
 
-        return MatchResponse(matches=matches, total_indexed=len(faiss_job_ids), resume_indexed=True)
+        for job_id in faiss_job_ids:
+            job_emb = job_embeddings_cache.get(job_id)
+            if job_emb is None:
+                continue
+
+            # Check exclusion — if job matches excluded skills more than any domain, skip
+            if exclude_embedding is not None:
+                exclude_score = float(np.dot(job_emb, exclude_embedding))
+                # Score all domains first to compare
+                best_domain_score = max(float(np.dot(job_emb, d_emb)) for d_emb in domain_embeddings.values()) if domain_embeddings else 0
+                # Exclude if: exclusion score > 0.40 AND exclusion > best domain match
+                if exclude_score > 0.40 and exclude_score > best_domain_score:
+                    excluded_count += 1
+                    continue
+
+            # Score against each domain
+            domain_scores = {}
+            for domain_name, domain_emb in domain_embeddings.items():
+                score = float(np.dot(job_emb, domain_emb)) * 100
+                domain_scores[domain_name] = round(max(0, score), 1)
+
+            # Final score = highest domain match (you only need ONE domain to be relevant)
+            best_domain = max(domain_scores, key=domain_scores.get) if domain_scores else ""
+            best_score = max(domain_scores.values()) if domain_scores else 0
+
+            # Only include jobs scoring above threshold AND above 50% absolute minimum
+            if best_score >= max(req.min_score * 100, 50):
+                matches.append(MatchResult(
+                    id=job_id, score=round(best_score, 1),
+                    best_domain=best_domain,
+                    domain_scores=domain_scores,
+                ))
+
+        # Sort by score descending
+        matches.sort(key=lambda m: m.score, reverse=True)
+        matches = matches[:req.top_k]
+
+        return MatchResponse(
+            matches=matches, excluded_count=excluded_count,
+            total_indexed=len(faiss_job_ids), resume_indexed=True,
+        )
     except Exception as e:
         return MatchResponse(matches=[], total_indexed=len(faiss_job_ids), resume_indexed=True)
 
@@ -355,17 +433,40 @@ class ScoreOneResponse(BaseModel):
     score: float  # 0-100
     method: str = "faiss"
 
+class ScoreOneResponse(BaseModel):
+    score: float  # 0-100
+    best_domain: str = ""
+    domain_scores: dict[str, float] = {}
+    excluded: bool = False
+    method: str = "faiss"
+
 @app.post("/semantic/score-one", response_model=ScoreOneResponse)
 async def score_one_job(req: ScoreOneRequest):
-    """Score a single job against the resume using FAISS"""
-    global resume_embedding
-    if resume_embedding is None:
-        return ScoreOneResponse(score=0, method="no_resume")
+    """Score a single job using domain-weighted matching with exclusion"""
+    global domain_embeddings, exclude_embedding
+    if not domain_embeddings:
+        return ScoreOneResponse(score=0, method="no_domains")
     try:
         text = f"{req.title} at {req.company}. {(req.description or '')[:500]} {(req.requirements or '')[:300]}"
         job_emb = embed_text(text)
-        score = float(np.dot(resume_embedding, job_emb)) * 100
-        return ScoreOneResponse(score=round(max(0, min(100, score)), 1), method="faiss")
+
+        # Check exclusion
+        if exclude_embedding is not None:
+            exclude_score = float(np.dot(job_emb, exclude_embedding))
+            best_d = max(float(np.dot(job_emb, d)) for d in domain_embeddings.values()) if domain_embeddings else 0
+            if exclude_score > 0.40 and exclude_score > best_d:
+                return ScoreOneResponse(score=0, excluded=True, method="excluded")
+
+        # Score against each domain
+        domain_scores = {}
+        for name, d_emb in domain_embeddings.items():
+            score = float(np.dot(job_emb, d_emb)) * 100
+            domain_scores[name] = round(max(0, score), 1)
+
+        best_domain = max(domain_scores, key=domain_scores.get) if domain_scores else ""
+        best_score = max(domain_scores.values()) if domain_scores else 0
+
+        return ScoreOneResponse(score=round(best_score, 1), best_domain=best_domain, domain_scores=domain_scores, method="faiss_domains")
     except:
         return ScoreOneResponse(score=0, method="error")
 
