@@ -6,20 +6,24 @@ import type { JobApplication } from '@/types/database'
 const admin = useAdminStore()
 const filterStatus = ref('')
 const filterChannel = ref('')
+const searchQuery = ref('')
+const currentPage = ref(1)
+const perPage = 15
 const showEdit = ref(false)
 const editApp = ref<JobApplication | null>(null)
+const showDetail = ref(false)
+const detailApp = ref<JobApplication | null>(null)
 const editForm = ref({ status: '', channel: '', agency_name: '', notes: '', salary_offered: '', follow_up_at: '' })
 
 const PIPELINE = [
-  { group: 'Discovery', statuses: ['new', 'saved', 'dismissed'], color: 'text-gray-400' },
-  { group: 'Application', statuses: ['applying', 'applied', 'apply_failed'], color: 'text-blue-400' },
-  { group: 'Screening', statuses: ['under_review', 'screened_out', 'phone_screen', 'endorsed'], color: 'text-cyan-400' },
-  { group: 'Assessment', statuses: ['technical_test', 'test_submitted', 'test_passed', 'test_failed'], color: 'text-yellow-400' },
-  { group: 'Client Match', statuses: ['profile_sent', 'client_reviewing', 'client_approved', 'client_rejected'], color: 'text-violet-400' },
-  { group: 'Interview', statuses: ['interview_scheduled', 'interview_round_1', 'interview_round_2', 'interview_round_3', 'interview_passed', 'interview_failed'], color: 'text-purple-400' },
-  { group: 'Offer', statuses: ['offer_received', 'negotiating', 'offer_accepted', 'offer_declined'], color: 'text-green-400' },
-  { group: 'Onboarding', statuses: ['pending_start', 'documents_submitted', 'onboarded'], color: 'text-emerald-400' },
-  { group: 'Closed', statuses: ['withdrawn', 'ghosted', 'position_filled'], color: 'text-red-400' },
+  { group: 'Application', statuses: ['applying', 'applied', 'apply_failed'], color: 'bg-blue-500', text: 'text-blue-400', bg: 'bg-blue-500/15' },
+  { group: 'Screening', statuses: ['under_review', 'screened_out', 'phone_screen', 'endorsed'], color: 'bg-cyan-500', text: 'text-cyan-400', bg: 'bg-cyan-500/15' },
+  { group: 'Assessment', statuses: ['technical_test', 'test_submitted', 'test_passed', 'test_failed'], color: 'bg-yellow-500', text: 'text-yellow-400', bg: 'bg-yellow-500/15' },
+  { group: 'Client Match', statuses: ['profile_sent', 'client_reviewing', 'client_approved', 'client_rejected'], color: 'bg-violet-500', text: 'text-violet-400', bg: 'bg-violet-500/15' },
+  { group: 'Interview', statuses: ['interview_scheduled', 'interview_round_1', 'interview_round_2', 'interview_round_3', 'interview_passed', 'interview_failed'], color: 'bg-purple-500', text: 'text-purple-400', bg: 'bg-purple-500/15' },
+  { group: 'Offer', statuses: ['offer_received', 'negotiating', 'offer_accepted', 'offer_declined'], color: 'bg-green-500', text: 'text-green-400', bg: 'bg-green-500/15' },
+  { group: 'Onboarding', statuses: ['pending_start', 'documents_submitted', 'onboarded'], color: 'bg-emerald-500', text: 'text-emerald-400', bg: 'bg-emerald-500/15' },
+  { group: 'Closed', statuses: ['withdrawn', 'ghosted', 'position_filled'], color: 'bg-red-500', text: 'text-red-400', bg: 'bg-red-500/15' },
 ]
 
 onMounted(() => { admin.fetchJobApplications(); admin.fetchJobListings() })
@@ -28,24 +32,43 @@ const filtered = computed(() => {
   let apps = [...admin.jobApplications]
   if (filterStatus.value) apps = apps.filter(a => a.status === filterStatus.value)
   if (filterChannel.value) apps = apps.filter(a => a.channel === filterChannel.value)
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    apps = apps.filter(a => {
+      const job = getJob(a.job_listing_id)
+      return job?.title.toLowerCase().includes(q) || job?.company.toLowerCase().includes(q) || a.notes?.toLowerCase().includes(q)
+    })
+  }
   return apps.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 })
 
+const totalPages = computed(() => Math.ceil(filtered.value.length / perPage))
+const paginated = computed(() => filtered.value.slice((currentPage.value - 1) * perPage, currentPage.value * perPage))
+
 function getJob(id: string) { return admin.jobListings.find(j => j.id === id) }
 
-function statusColor(s: string) {
-  for (const p of PIPELINE) { if (p.statuses.includes(s)) return p.color }
-  return 'text-gray-400'
+function getStatusInfo(s: string) {
+  for (const p of PIPELINE) { if (p.statuses.includes(s)) return p }
+  return PIPELINE[0]
 }
 
-function statusBg(s: string) {
-  const colorMap: Record<string, string> = {
-    'text-gray-400': 'bg-gray-500/15', 'text-blue-400': 'bg-blue-500/15', 'text-cyan-400': 'bg-cyan-500/15',
-    'text-yellow-400': 'bg-yellow-500/15', 'text-violet-400': 'bg-violet-500/15', 'text-purple-400': 'bg-purple-500/15',
-    'text-green-400': 'bg-green-500/15', 'text-emerald-400': 'bg-emerald-500/15', 'text-red-400': 'bg-red-500/15',
-  }
-  return colorMap[statusColor(s)] || 'bg-gray-500/15'
+function getStageIndex(s: string): number {
+  for (let i = 0; i < PIPELINE.length; i++) { if (PIPELINE[i].statuses.includes(s)) return i }
+  return 0
 }
+
+// Pipeline progress for a single application
+function pipelineProgress(app: JobApplication) {
+  const stageIdx = getStageIndex(app.status)
+  return PIPELINE.map((stage, idx) => ({
+    ...stage,
+    active: idx === stageIdx,
+    completed: idx < stageIdx,
+    future: idx > stageIdx,
+  }))
+}
+
+function daysSince(d: string) { return Math.floor((Date.now() - new Date(d).getTime()) / 86400000) }
 
 function openEdit(app: JobApplication) {
   editApp.value = app
@@ -57,6 +80,8 @@ function openEdit(app: JobApplication) {
   showEdit.value = true
 }
 
+function openDetail(app: JobApplication) { detailApp.value = app; showDetail.value = true }
+
 async function saveEdit() {
   if (!editApp.value) return
   await admin.updateRow('job_applications', editApp.value.id, {
@@ -65,129 +90,204 @@ async function saveEdit() {
     salary_offered: editForm.value.salary_offered ? Number(editForm.value.salary_offered) : null,
     follow_up_at: editForm.value.follow_up_at || null,
   })
-  showEdit.value = false
-  await admin.fetchJobApplications()
+  showEdit.value = false; await admin.fetchJobApplications()
 }
 
 async function deleteApp(app: JobApplication) {
-  if (confirm(`Remove this application?`)) {
-    await admin.deleteRow('job_applications', app.id)
-    await admin.fetchJobApplications()
-  }
-}
-
-function timeAgo(d: string) {
-  const diff = Date.now() - new Date(d).getTime()
-  const days = Math.floor(diff / 86400000)
-  if (days === 0) return 'Today'
-  if (days < 7) return `${days}d ago`
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (confirm('Remove this application?')) { await admin.deleteRow('job_applications', app.id); await admin.fetchJobApplications() }
 }
 </script>
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h2 class="text-2xl font-bold text-white">Applications</h2>
-        <p class="text-sm text-gray-400 mt-1">{{ admin.jobApplications.length }} total applications</p>
-      </div>
-      <div class="flex gap-3">
-        <select v-model="filterChannel" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
-          <option value="">All Channels</option>
-          <option value="direct">Direct</option>
-          <option value="agency">Agency</option>
-          <option value="freelance">Freelance</option>
-        </select>
-        <select v-model="filterStatus" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
-          <option value="">All Statuses</option>
-          <optgroup v-for="p in PIPELINE" :key="p.group" :label="p.group">
-            <option v-for="s in p.statuses" :key="s" :value="s">{{ s.replace(/_/g, ' ') }}</option>
-          </optgroup>
-        </select>
-      </div>
+    <!-- Stage Summary Cards -->
+    <div class="flex gap-2 mb-5 overflow-x-auto pb-1">
+      <button v-for="p in PIPELINE" :key="p.group" @click="filterStatus = filterStatus === p.statuses[0] ? '' : p.statuses[0]"
+        class="glass-dark rounded-lg px-3 py-2 border min-w-[90px] shrink-0 cursor-pointer transition-colors text-center"
+        :class="filterStatus && p.statuses.includes(filterStatus) ? 'border-cyber-purple/40' : 'border-neural-700/30 hover:border-neural-600'">
+        <p class="text-[9px] text-gray-500 uppercase">{{ p.group }}</p>
+        <p class="text-lg font-bold" :class="p.text">{{ admin.jobApplications.filter(a => p.statuses.includes(a.status)).length }}</p>
+      </button>
     </div>
 
-    <!-- Stage Summary Cards -->
-    <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
-      <div v-for="p in PIPELINE" :key="p.group"
-        class="glass-dark rounded-lg px-3 py-2 border border-neural-700/30 min-w-[100px] shrink-0 cursor-pointer hover:border-neural-600 transition-colors"
-        @click="filterStatus = filterStatus === p.statuses[0] ? '' : p.statuses[0]">
-        <p class="text-[10px] text-gray-500">{{ p.group }}</p>
-        <p class="text-lg font-bold" :class="p.color">{{ admin.jobApplications.filter(a => p.statuses.includes(a.status)).length }}</p>
+    <!-- Filters -->
+    <div class="flex gap-3 mb-4 items-center">
+      <div class="flex-1 relative">
+        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        <input v-model="searchQuery" @input="currentPage = 1" placeholder="Search by job title, company..."
+          class="w-full pl-10 pr-4 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
       </div>
+      <select v-model="filterChannel" @change="currentPage = 1" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
+        <option value="">All Channels</option>
+        <option value="direct">Direct</option><option value="agency">Agency</option><option value="freelance">Freelance</option>
+      </select>
+      <select v-model="filterStatus" @change="currentPage = 1" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
+        <option value="">All Statuses</option>
+        <optgroup v-for="p in PIPELINE" :key="p.group" :label="p.group">
+          <option v-for="s in p.statuses" :key="s" :value="s">{{ s.replace(/_/g, ' ') }}</option>
+        </optgroup>
+      </select>
+      <span class="text-[10px] text-gray-500 shrink-0">{{ filtered.length }} applications</span>
     </div>
 
     <!-- Empty -->
     <div v-if="filtered.length === 0" class="text-center py-16 glass-dark rounded-xl border border-neural-700/50">
       <div class="text-4xl mb-3">📋</div>
       <h3 class="text-lg font-semibold text-white mb-2">No applications</h3>
-      <p class="text-gray-500 text-sm">Apply to jobs from the Search page.</p>
+      <p class="text-gray-500 text-sm">Apply to jobs from the Jobs page to start tracking.</p>
     </div>
 
-    <!-- Table -->
-    <div v-else class="glass-dark rounded-xl overflow-hidden border border-neural-700/50">
-      <table class="w-full text-sm">
-        <thead class="bg-neural-700/40">
-          <tr>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase w-8">#</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Job</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Channel</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Platform</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Status</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Via</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Applied</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Follow-up</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Notes</th>
-            <th class="text-right px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(app, idx) in filtered" :key="app.id" class="border-t border-neural-700/30 hover:bg-neural-700/20 transition-colors">
-            <td class="px-4 py-3 text-gray-600 text-xs">{{ idx + 1 }}</td>
-            <td class="px-4 py-3">
-              <p class="text-white font-medium text-xs truncate max-w-[200px]">{{ getJob(app.job_listing_id)?.title || '—' }}</p>
-              <p class="text-[10px] text-gray-500">{{ getJob(app.job_listing_id)?.company || '' }}</p>
-            </td>
-            <td class="px-4 py-3">
-              <span class="text-xs text-gray-400 capitalize">{{ app.channel }}</span>
-              <p v-if="app.agency_name" class="text-[10px] text-gray-600">{{ app.agency_name }}</p>
-            </td>
-            <td class="px-4 py-3 text-xs text-gray-400 capitalize">{{ app.platform }}</td>
-            <td class="px-4 py-3">
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize" :class="statusBg(app.status) + ' ' + statusColor(app.status)">
-                {{ app.status.replace(/_/g, ' ') }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-[10px] text-gray-500 capitalize">{{ app.applied_via || '—' }}</td>
-            <td class="px-4 py-3 text-[10px] text-gray-500">{{ timeAgo(app.created_at) }}</td>
-            <td class="px-4 py-3 text-[10px]" :class="app.follow_up_at ? 'text-yellow-400' : 'text-gray-600'">
-              {{ app.follow_up_at ? new Date(app.follow_up_at).toLocaleDateString() : '—' }}
-            </td>
-            <td class="px-4 py-3 text-[10px] text-gray-600 max-w-[100px] truncate">{{ app.notes || '—' }}</td>
-            <td class="px-4 py-3 text-right">
-              <div class="flex items-center justify-end gap-0.5">
-                <button @click="openEdit(app)" class="p-1.5 rounded-lg hover:bg-neural-600 text-gray-500 hover:text-cyber-cyan transition-colors" title="Edit">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                </button>
-                <button @click="deleteApp(app)" class="p-1.5 rounded-lg hover:bg-red-900/30 text-gray-500 hover:text-red-400 transition-colors" title="Delete">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- Applications List -->
+    <div v-else class="space-y-3">
+      <div v-for="app in paginated" :key="app.id"
+        class="glass-dark rounded-xl border border-neural-700/50 overflow-hidden hover:border-neural-600 transition-colors">
+        <!-- Top row: job info + status -->
+        <div class="flex items-center justify-between px-4 py-3">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-sm shrink-0" :class="getStatusInfo(app.status).bg">
+              {{ app.channel === 'agency' ? '🏢' : app.channel === 'freelance' ? '💻' : '📨' }}
+            </div>
+            <div class="min-w-0">
+              <p class="text-sm text-white font-medium truncate">{{ getJob(app.job_listing_id)?.title || '—' }}</p>
+              <p class="text-[10px] text-gray-500">{{ getJob(app.job_listing_id)?.company || '' }} · {{ app.platform }} · {{ app.channel }}{{ app.agency_name ? ` (${app.agency_name})` : '' }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 shrink-0">
+            <div class="text-right">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize" :class="getStatusInfo(app.status).bg + ' ' + getStatusInfo(app.status).text">{{ app.status.replace(/_/g, ' ') }}</span>
+              <p class="text-[9px] text-gray-600 mt-0.5">{{ daysSince(app.created_at) }}d since applied</p>
+            </div>
+            <div class="flex gap-0.5">
+              <button @click="openDetail(app)" class="p-1.5 rounded-lg hover:bg-neural-600 text-gray-500 hover:text-white transition-colors" title="Pipeline Report">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+              </button>
+              <button @click="openEdit(app)" class="p-1.5 rounded-lg hover:bg-neural-600 text-gray-500 hover:text-cyber-cyan transition-colors" title="Edit">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              </button>
+              <button @click="deleteApp(app)" class="p-1.5 rounded-lg hover:bg-red-900/30 text-gray-500 hover:text-red-400 transition-colors" title="Delete">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- Pipeline progress bar -->
+        <div class="px-4 pb-3">
+          <div class="flex items-center gap-0.5">
+            <template v-for="(stage, idx) in pipelineProgress(app)" :key="stage.group">
+              <div class="flex-1 h-1.5 rounded-full transition-colors"
+                :class="stage.completed ? stage.color : stage.active ? stage.color + ' animate-pulse' : 'bg-neural-700/40'" />
+              <div v-if="idx < pipelineProgress(app).length - 1" class="w-0.5" />
+            </template>
+          </div>
+          <div class="flex justify-between mt-1">
+            <span class="text-[8px] text-gray-600">Applied</span>
+            <span class="text-[8px] text-gray-600">Onboarded</span>
+          </div>
+        </div>
+        <!-- Notes / follow-up -->
+        <div v-if="app.notes || app.follow_up_at" class="px-4 pb-3 flex gap-4">
+          <p v-if="app.notes" class="text-[10px] text-gray-500 truncate flex-1">{{ app.notes }}</p>
+          <p v-if="app.follow_up_at" class="text-[10px] shrink-0" :class="new Date(app.follow_up_at) < new Date() ? 'text-red-400' : 'text-yellow-400'">
+            Follow-up: {{ new Date(app.follow_up_at).toLocaleDateString() }}{{ new Date(app.follow_up_at) < new Date() ? ' (OVERDUE)' : '' }}
+          </p>
+        </div>
+      </div>
     </div>
 
-    <!-- Edit Modal -->
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between mt-4">
+      <p class="text-[10px] text-gray-500">{{ (currentPage - 1) * perPage + 1 }}-{{ Math.min(currentPage * perPage, filtered.length) }} of {{ filtered.length }}</p>
+      <div class="flex items-center gap-1">
+        <button @click="currentPage--" :disabled="currentPage === 1" class="px-2.5 py-1 rounded text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30">&larr;</button>
+        <button v-for="pg in totalPages" :key="pg" @click="currentPage = pg"
+          class="w-7 h-7 rounded text-[10px] font-medium" :class="pg === currentPage ? 'bg-cyber-purple/20 text-cyber-purple' : 'text-gray-500 hover:text-white'">{{ pg }}</button>
+        <button @click="currentPage++" :disabled="currentPage === totalPages" class="px-2.5 py-1 rounded text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30">&rarr;</button>
+      </div>
+    </div>
+
+    <!-- ═══ Pipeline Report Modal ═══ -->
     <Teleport to="body">
-      <div v-if="showEdit" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="showEdit = false">
+      <div v-if="showDetail && detailApp" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="showDetail = false">
+        <div class="glass-dark rounded-xl w-full max-w-lg border border-neural-600 max-h-[85vh] flex flex-col">
+          <div class="px-6 py-4 border-b border-neural-700 shrink-0">
+            <h3 class="text-lg font-bold text-white">Pipeline Status Report</h3>
+            <p class="text-sm text-gray-400">{{ getJob(detailApp.job_listing_id)?.title }} at {{ getJob(detailApp.job_listing_id)?.company }}</p>
+          </div>
+          <div class="flex-1 overflow-y-auto p-6 space-y-4">
+            <!-- Current Status -->
+            <div class="text-center py-3">
+              <span class="px-4 py-1.5 rounded-full text-sm font-medium capitalize" :class="getStatusInfo(detailApp.status).bg + ' ' + getStatusInfo(detailApp.status).text">{{ detailApp.status.replace(/_/g, ' ') }}</span>
+              <p class="text-xs text-gray-500 mt-2">{{ daysSince(detailApp.created_at) }} days in pipeline</p>
+            </div>
+
+            <!-- Stage-by-stage pipeline -->
+            <div class="space-y-1">
+              <div v-for="(stage, idx) in pipelineProgress(detailApp)" :key="stage.group"
+                class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors"
+                :class="stage.active ? 'bg-neural-700/40 ring-1 ring-neural-600' : ''">
+                <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                  :class="stage.completed ? stage.color + ' text-white' : stage.active ? stage.color + ' text-white animate-pulse' : 'bg-neural-700/50 text-gray-600'">
+                  {{ stage.completed ? '✓' : idx + 1 }}
+                </div>
+                <div class="flex-1">
+                  <p class="text-xs font-medium" :class="stage.completed ? 'text-white' : stage.active ? 'text-white' : 'text-gray-600'">{{ stage.group }}</p>
+                  <p v-if="stage.active" class="text-[10px]" :class="stage.text">Current stage — {{ detailApp.status.replace(/_/g, ' ') }}</p>
+                </div>
+                <span v-if="stage.completed" class="text-[10px] text-green-400">Done</span>
+                <span v-else-if="stage.active" class="text-[10px]" :class="stage.text">Active</span>
+                <span v-else class="text-[10px] text-gray-700">Pending</span>
+              </div>
+            </div>
+
+            <!-- Key Info -->
+            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-neural-700">
+              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                <p class="text-[9px] text-gray-500 uppercase">Channel</p>
+                <p class="text-sm text-white capitalize">{{ detailApp.channel }}{{ detailApp.agency_name ? ` — ${detailApp.agency_name}` : '' }}</p>
+              </div>
+              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                <p class="text-[9px] text-gray-500 uppercase">Applied Via</p>
+                <p class="text-sm text-white capitalize">{{ detailApp.applied_via || '—' }}</p>
+              </div>
+              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                <p class="text-[9px] text-gray-500 uppercase">Salary Offered</p>
+                <p class="text-sm" :class="detailApp.salary_offered ? 'text-green-400' : 'text-gray-500'">{{ detailApp.salary_offered ? `${detailApp.salary_currency} ${detailApp.salary_offered.toLocaleString()}` : '—' }}</p>
+              </div>
+              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                <p class="text-[9px] text-gray-500 uppercase">Follow-up</p>
+                <p class="text-sm" :class="detailApp.follow_up_at ? (new Date(detailApp.follow_up_at) < new Date() ? 'text-red-400' : 'text-yellow-400') : 'text-gray-500'">
+                  {{ detailApp.follow_up_at ? new Date(detailApp.follow_up_at).toLocaleDateString() : '—' }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Notes -->
+            <div v-if="detailApp.notes" class="pt-3 border-t border-neural-700">
+              <p class="text-[9px] text-gray-500 uppercase mb-1">Notes</p>
+              <p class="text-xs text-gray-300">{{ detailApp.notes }}</p>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex gap-3 pt-3 border-t border-neural-700">
+              <button @click="openEdit(detailApp); showDetail = false" class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90">Update Status</button>
+              <a v-if="getJob(detailApp.job_listing_id)?.url" :href="getJob(detailApp.job_listing_id)?.url" target="_blank" class="px-4 py-2 bg-neural-700 text-gray-300 rounded-lg text-sm hover:bg-neural-600">View Job</a>
+            </div>
+          </div>
+          <div class="px-6 py-3 border-t border-neural-700 shrink-0">
+            <button @click="showDetail = false" class="w-full py-2 bg-neural-700 text-gray-300 rounded-lg text-sm hover:bg-neural-600">Close</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ═══ Edit Modal ═══ -->
+    <Teleport to="body">
+      <div v-if="showEdit" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" @click.self="showEdit = false">
         <div class="glass-dark rounded-xl p-6 w-full max-w-md border border-neural-600">
           <h3 class="text-sm font-bold text-white mb-4">Update Application</h3>
           <form @submit.prevent="saveEdit" class="space-y-4">
             <div>
-              <label class="block text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Status</label>
+              <label class="block text-[10px] text-gray-400 mb-1 uppercase">Status</label>
               <select v-model="editForm.status" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none">
                 <optgroup v-for="p in PIPELINE" :key="p.group" :label="p.group">
                   <option v-for="s in p.statuses" :key="s" :value="s">{{ s.replace(/_/g, ' ') }}</option>
@@ -195,31 +295,14 @@ function timeAgo(d: string) {
               </select>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Channel</label>
-                <select v-model="editForm.channel" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none">
-                  <option value="direct">Direct</option><option value="agency">Agency</option><option value="freelance">Freelance</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Agency</label>
-                <input v-model="editForm.agency_name" placeholder="Agency name..." class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
-              </div>
+              <div><label class="block text-[10px] text-gray-400 mb-1 uppercase">Channel</label><select v-model="editForm.channel" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none"><option value="direct">Direct</option><option value="agency">Agency</option><option value="freelance">Freelance</option></select></div>
+              <div><label class="block text-[10px] text-gray-400 mb-1 uppercase">Agency</label><input v-model="editForm.agency_name" placeholder="Agency name..." class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" /></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Salary Offered</label>
-                <input v-model="editForm.salary_offered" type="number" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
-              </div>
-              <div>
-                <label class="block text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Follow-up</label>
-                <input v-model="editForm.follow_up_at" type="date" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
-              </div>
+              <div><label class="block text-[10px] text-gray-400 mb-1 uppercase">Salary Offered</label><input v-model="editForm.salary_offered" type="number" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" /></div>
+              <div><label class="block text-[10px] text-gray-400 mb-1 uppercase">Follow-up</label><input v-model="editForm.follow_up_at" type="date" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" /></div>
             </div>
-            <div>
-              <label class="block text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Notes</label>
-              <textarea v-model="editForm.notes" rows="3" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none resize-none" />
-            </div>
+            <div><label class="block text-[10px] text-gray-400 mb-1 uppercase">Notes</label><textarea v-model="editForm.notes" rows="3" class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none resize-none" /></div>
             <div class="flex justify-end gap-2">
               <button type="button" @click="showEdit = false" class="px-4 py-2 bg-neural-700 text-gray-300 rounded-lg text-xs">Cancel</button>
               <button type="submit" class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-xs font-medium hover:opacity-90">Save</button>
