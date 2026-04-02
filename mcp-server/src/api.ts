@@ -417,6 +417,121 @@ async function searchRemotive(query: string): Promise<NormalizedJob[]> {
   }
 }
 
+async function searchArbeitnow(query: string): Promise<NormalizedJob[]> {
+  try {
+    const res = await fetch('https://www.arbeitnow.com/api/job-board-api')
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.data || [])
+      .filter((j: any) => {
+        const text = `${j.title} ${j.company_name} ${j.description || ''} ${(j.tags || []).join(' ')}`.toLowerCase()
+        return query.split(' ').some((w: string) => text.includes(w.toLowerCase()))
+      })
+      .slice(0, 20)
+      .map((j: any) => ({
+        platform: 'arbeitnow',
+        external_id: j.slug || null,
+        title: j.title || 'Untitled',
+        company: j.company_name || 'Unknown',
+        location: j.location || 'Europe',
+        salary_min: null, salary_max: null, salary_currency: 'EUR',
+        job_type: j.remote ? 'remote' : 'full-time',
+        description: (j.description || '').slice(0, 5000) || null,
+        requirements: (j.tags || []).join(', ') || null,
+        url: j.url || '',
+        posted_at: j.created_at ? new Date(j.created_at * 1000).toISOString() : null,
+        status: 'new',
+      }))
+  } catch (e) {
+    console.error('[Scout] Arbeitnow error:', e)
+    return []
+  }
+}
+
+async function searchHackerNews(query: string): Promise<NormalizedJob[]> {
+  try {
+    // Get latest job story IDs from HN Firebase API
+    const idsRes = await fetch('https://hacker-news.firebaseio.com/v0/jobstories.json')
+    if (!idsRes.ok) return []
+    const ids: number[] = await idsRes.json()
+    // Fetch first 30 job stories
+    const jobs: NormalizedJob[] = []
+    const fetchIds = ids.slice(0, 30)
+    const stories = await Promise.all(
+      fetchIds.map(async (id: number) => {
+        const r = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`)
+        return r.ok ? r.json() : null
+      })
+    )
+    for (const s of stories) {
+      if (!s || !s.title) continue
+      const text = `${s.title} ${s.text || ''}`.toLowerCase()
+      if (!query.split(' ').some((w: string) => text.includes(w.toLowerCase()))) continue
+      // Parse company from title (usually "Company (Location) - Role")
+      const titleMatch = s.title.match(/^(.+?)\s*[\(|–|-]/)
+      const company = titleMatch ? titleMatch[1].trim() : 'YC Company'
+      jobs.push({
+        platform: 'hackernews',
+        external_id: String(s.id),
+        title: s.title,
+        company,
+        location: 'Remote / Various',
+        salary_min: null, salary_max: null, salary_currency: 'USD',
+        job_type: 'full-time',
+        description: (s.text || '').slice(0, 5000) || null,
+        requirements: null,
+        url: s.url || `https://news.ycombinator.com/item?id=${s.id}`,
+        posted_at: s.time ? new Date(s.time * 1000).toISOString() : null,
+        status: 'new',
+      })
+    }
+    return jobs
+  } catch (e) {
+    console.error('[Scout] HackerNews error:', e)
+    return []
+  }
+}
+
+async function searchLinkedInPublic(query: string, location: string): Promise<NormalizedJob[]> {
+  try {
+    // LinkedIn public guest API (no auth required)
+    const params = new URLSearchParams({
+      keywords: query,
+      location: location || '',
+      start: '0',
+    })
+    const res = await fetch(`https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    })
+    if (!res.ok) return []
+    // Returns HTML - parse basic job cards
+    const html = await res.text()
+    const jobs: NormalizedJob[] = []
+    // Extract job cards from HTML using regex (basic parsing)
+    const cardRegex = /data-entity-urn="urn:li:jobPosting:(\d+)"[\s\S]*?<a[^>]*class="base-card__full-link"[^>]*href="([^"]*)"[\s\S]*?<span class="sr-only">([^<]*)<\/span>[\s\S]*?<h4[^>]*>([^<]*)<\/h4>[\s\S]*?<span class="job-search-card__location">([^<]*)<\/span>/g
+    let match
+    while ((match = cardRegex.exec(html)) !== null) {
+      jobs.push({
+        platform: 'linkedin',
+        external_id: match[1],
+        title: match[3].trim(),
+        company: match[4].trim(),
+        location: match[5].trim(),
+        salary_min: null, salary_max: null, salary_currency: 'USD',
+        job_type: null,
+        description: null, requirements: null,
+        url: match[2].split('?')[0],
+        posted_at: null,
+        status: 'new',
+      })
+    }
+    return jobs.slice(0, 20)
+  } catch (e) {
+    console.error('[Scout] LinkedIn Public error:', e)
+    return []
+  }
+}
+
 async function searchAdzuna(query: string, location: string): Promise<NormalizedJob[]> {
   const appId = process.env.ADZUNA_APP_ID || ''
   const appKey = process.env.ADZUNA_APP_KEY || ''
@@ -490,6 +605,33 @@ async function handleJobSearch(req: IncomingMessage, res: ServerResponse) {
       results.push(...jobs)
       if (jobs.length) sources.push(`Remotive: ${jobs.length}`)
     } catch { errors.push('Remotive failed') }
+  }
+
+  // Arbeitnow (EU jobs, no auth)
+  if (!platform || platform === 'arbeitnow') {
+    try {
+      const jobs = await searchArbeitnow(query)
+      results.push(...jobs)
+      if (jobs.length) sources.push(`Arbeitnow: ${jobs.length}`)
+    } catch { errors.push('Arbeitnow failed') }
+  }
+
+  // Hacker News YC Jobs (no auth, startup/tech focused)
+  if (!platform || platform === 'hackernews') {
+    try {
+      const jobs = await searchHackerNews(query)
+      results.push(...jobs)
+      if (jobs.length) sources.push(`HackerNews: ${jobs.length}`)
+    } catch { errors.push('HackerNews failed') }
+  }
+
+  // LinkedIn Public Guest API (no auth)
+  if (!platform || platform === 'linkedin') {
+    try {
+      const jobs = await searchLinkedInPublic(query, location || '')
+      results.push(...jobs)
+      if (jobs.length) sources.push(`LinkedIn: ${jobs.length}`)
+    } catch { errors.push('LinkedIn failed') }
   }
 
   // ─── API Key APIs (optional, enhances results) ───

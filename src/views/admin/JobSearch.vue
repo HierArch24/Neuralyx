@@ -24,17 +24,18 @@ const showDetail = ref(false)
 const detailJob = ref<JobListing | null>(null)
 
 const PLATFORMS = [
-  { id: 'indeed', label: 'Indeed', icon: '🔵' },
   { id: 'linkedin', label: 'LinkedIn', icon: '🟦' },
+  { id: 'indeed', label: 'Indeed', icon: '🔵' },
   { id: 'glassdoor', label: 'Glassdoor', icon: '🟢' },
+  { id: 'remoteok', label: 'RemoteOK', icon: '🌍' },
+  { id: 'remotive', label: 'Remotive', icon: '🏠' },
+  { id: 'himalayas', label: 'Himalayas', icon: '⛰️' },
+  { id: 'hackernews', label: 'HN/YC Jobs', icon: '🟧' },
+  { id: 'arbeitnow', label: 'Arbeitnow', icon: '🇪🇺' },
   { id: 'ziprecruiter', label: 'ZipRecruiter', icon: '🟩' },
   { id: 'google', label: 'Google Jobs', icon: '🔴' },
+  { id: 'adzuna', label: 'Adzuna', icon: '🔶' },
   { id: 'jobstreet', label: 'JobStreet', icon: '🟣' },
-  { id: 'onlinejobs', label: 'OnlineJobs.ph', icon: '🟠' },
-  { id: 'bossjob', label: 'Bossjob', icon: '🟡' },
-  { id: 'kalibrr', label: 'Kalibrr', icon: '🔷' },
-  { id: 'bestjobs', label: 'BestJobs', icon: '🩷' },
-  { id: 'facebook', label: 'Facebook', icon: '🔵' },
 ]
 const JOB_TYPES = ['full-time', 'part-time', 'contract', 'remote', 'hybrid', 'internship']
 
