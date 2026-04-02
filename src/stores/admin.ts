@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
-import type { Section, Project, Skill, Tool, ContactMessage, NewsArticle, Credential } from '@/types/database'
+import type { Section, Project, Skill, Tool, ContactMessage, NewsArticle, Credential, JobListing, JobProfile, JobApplication, JobAgentLog } from '@/types/database'
 
 export const useAdminStore = defineStore('admin', () => {
   const sections = ref<Section[]>([])
@@ -11,6 +11,10 @@ export const useAdminStore = defineStore('admin', () => {
   const messages = ref<ContactMessage[]>([])
   const news = ref<NewsArticle[]>([])
   const credentials = ref<Credential[]>([])
+  const jobListings = ref<JobListing[]>([])
+  const jobProfile = ref<JobProfile[]>([])
+  const jobApplications = ref<JobApplication[]>([])
+  const jobAgentLogs = ref<JobAgentLog[]>([])
   const loading = ref(false)
   const lastError = ref<string | null>(null)
 
@@ -67,14 +71,21 @@ export const useAdminStore = defineStore('admin', () => {
   const fetchMessages = () => fetchTable<ContactMessage>('contact_messages', messages, 'created_at')
   const fetchNews = () => fetchTable<NewsArticle>('news', news, 'sort_order')
   const fetchCredentials = () => fetchTable<Credential>('credentials', credentials, 'company')
+  const fetchJobListings = () => fetchTable<JobListing>('job_listings', jobListings, 'created_at')
+  const fetchJobProfile = () => fetchTable<JobProfile>('job_profile', jobProfile, 'created_at')
+  const fetchJobApplications = () => fetchTable<JobApplication>('job_applications', jobApplications, 'created_at')
+  const fetchJobAgentLogs = () => fetchTable<JobAgentLog>('job_agent_logs', jobAgentLogs, 'created_at')
 
   async function markMessageRead(id: string) {
     await updateRow('contact_messages', id, { is_read: true })
   }
 
   return {
-    sections, projects, skills, tools, messages, news, credentials, loading, lastError,
+    sections, projects, skills, tools, messages, news, credentials,
+    jobListings, jobProfile, jobApplications, jobAgentLogs,
+    loading, lastError,
     fetchSections, fetchProjects, fetchSkills, fetchTools, fetchMessages, fetchNews, fetchCredentials,
+    fetchJobListings, fetchJobProfile, fetchJobApplications, fetchJobAgentLogs,
     insertRow, updateRow, deleteRow, markMessageRead,
   }
 })

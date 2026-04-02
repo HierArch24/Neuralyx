@@ -92,6 +92,91 @@ CREATE TABLE credentials (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Job Listings (search results cache)
+CREATE TABLE job_listings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    platform TEXT NOT NULL,
+    external_id TEXT,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    location TEXT,
+    salary_min NUMERIC,
+    salary_max NUMERIC,
+    salary_currency TEXT DEFAULT 'PHP',
+    job_type TEXT,
+    description TEXT,
+    requirements TEXT,
+    url TEXT NOT NULL,
+    posted_at TIMESTAMPTZ,
+    match_score NUMERIC,
+    status TEXT DEFAULT 'new',
+    notes TEXT,
+    raw_data JSONB,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(platform, external_id)
+);
+
+-- Job Profile / Resume
+CREATE TABLE job_profile (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title TEXT NOT NULL,
+    skills TEXT[] DEFAULT '{}',
+    experience_years INTEGER,
+    preferred_locations TEXT[] DEFAULT '{}',
+    preferred_job_types TEXT[] DEFAULT '{}',
+    salary_min NUMERIC,
+    salary_currency TEXT DEFAULT 'PHP',
+    keywords TEXT[] DEFAULT '{}',
+    exclude_keywords TEXT[] DEFAULT '{}',
+    resume_url TEXT,
+    resume_text TEXT,
+    cover_letter_template TEXT,
+    auto_apply_enabled BOOLEAN DEFAULT false,
+    auto_apply_min_score INTEGER DEFAULT 75,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Job Applications (full recruitment lifecycle)
+CREATE TABLE job_applications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_listing_id UUID REFERENCES job_listings(id) ON DELETE CASCADE,
+    platform TEXT NOT NULL,
+    channel TEXT DEFAULT 'direct',
+    agency_name TEXT,
+    status TEXT DEFAULT 'applied',
+    applied_via TEXT,
+    cover_letter TEXT,
+    resume_version TEXT,
+    salary_offered NUMERIC,
+    salary_currency TEXT DEFAULT 'PHP',
+    interview_dates JSONB DEFAULT '[]',
+    onboarding_checklist JSONB DEFAULT '{}',
+    response_at TIMESTAMPTZ,
+    follow_up_at TIMESTAMPTZ,
+    start_date TIMESTAMPTZ,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Job Agent Run Logs
+CREATE TABLE job_agent_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    run_id TEXT NOT NULL,
+    step TEXT NOT NULL,
+    status TEXT NOT NULL,
+    message TEXT,
+    jobs_found INTEGER DEFAULT 0,
+    jobs_matched INTEGER DEFAULT 0,
+    jobs_applied INTEGER DEFAULT 0,
+    errors JSONB,
+    started_at TIMESTAMPTZ DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
@@ -108,6 +193,9 @@ CREATE TRIGGER skills_updated_at BEFORE UPDATE ON skills FOR EACH ROW EXECUTE FU
 CREATE TRIGGER tools_updated_at BEFORE UPDATE ON tools FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER site_settings_updated_at BEFORE UPDATE ON site_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER credentials_updated_at BEFORE UPDATE ON credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER job_listings_updated_at BEFORE UPDATE ON job_listings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER job_profile_updated_at BEFORE UPDATE ON job_profile FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER job_applications_updated_at BEFORE UPDATE ON job_applications FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Seed default site settings
 INSERT INTO site_settings (key, value) VALUES

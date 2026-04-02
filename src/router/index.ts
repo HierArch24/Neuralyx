@@ -131,6 +131,38 @@ const router = createRouter({
         },
       ]
     },
+    {
+      path: '/admin/jobs',
+      component: () => import('@/layouts/JobsLayout.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: '',
+          name: 'admin-jobs',
+          component: () => import('@/views/admin/Jobs.vue')
+        },
+        {
+          path: 'search',
+          name: 'admin-jobs-search',
+          component: () => import('@/views/admin/JobSearch.vue')
+        },
+        {
+          path: 'applications',
+          name: 'admin-jobs-applications',
+          component: () => import('@/views/admin/JobApplications.vue')
+        },
+        {
+          path: 'profile',
+          name: 'admin-jobs-profile',
+          component: () => import('@/views/admin/JobProfile.vue')
+        },
+        {
+          path: 'agent',
+          name: 'admin-jobs-agent',
+          component: () => import('@/views/admin/JobAgent.vue')
+        },
+      ]
+    },
   ]
 })
 

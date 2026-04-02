@@ -41,6 +41,26 @@ export interface Database {
         Insert: Omit<Credential, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<Credential, 'id' | 'created_at' | 'updated_at'>>
       }
+      job_listings: {
+        Row: JobListing
+        Insert: Omit<JobListing, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<JobListing, 'id' | 'created_at' | 'updated_at'>>
+      }
+      job_profile: {
+        Row: JobProfile
+        Insert: Omit<JobProfile, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<JobProfile, 'id' | 'created_at' | 'updated_at'>>
+      }
+      job_applications: {
+        Row: JobApplication
+        Insert: Omit<JobApplication, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<JobApplication, 'id' | 'created_at' | 'updated_at'>>
+      }
+      job_agent_logs: {
+        Row: JobAgentLog
+        Insert: Omit<JobAgentLog, 'id' | 'created_at'>
+        Update: Partial<Omit<JobAgentLog, 'id' | 'created_at'>>
+      }
     }
   }
 }
@@ -135,6 +155,86 @@ export interface SiteSetting {
   value: Record<string, unknown>
   created_at: string
   updated_at: string
+}
+
+export interface JobListing {
+  id: string
+  platform: string
+  external_id: string | null
+  title: string
+  company: string
+  location: string | null
+  salary_min: number | null
+  salary_max: number | null
+  salary_currency: string
+  job_type: string | null
+  description: string | null
+  requirements: string | null
+  url: string
+  posted_at: string | null
+  match_score: number | null
+  status: string
+  notes: string | null
+  raw_data: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface JobProfile {
+  id: string
+  title: string
+  skills: string[]
+  experience_years: number | null
+  preferred_locations: string[]
+  preferred_job_types: string[]
+  salary_min: number | null
+  salary_currency: string
+  keywords: string[]
+  exclude_keywords: string[]
+  resume_url: string | null
+  resume_text: string | null
+  cover_letter_template: string | null
+  auto_apply_enabled: boolean
+  auto_apply_min_score: number
+  created_at: string
+  updated_at: string
+}
+
+export interface JobApplication {
+  id: string
+  job_listing_id: string
+  platform: string
+  channel: string
+  agency_name: string | null
+  status: string
+  applied_via: string | null
+  cover_letter: string | null
+  resume_version: string | null
+  salary_offered: number | null
+  salary_currency: string
+  interview_dates: Record<string, unknown>[]
+  onboarding_checklist: Record<string, boolean>
+  response_at: string | null
+  follow_up_at: string | null
+  start_date: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface JobAgentLog {
+  id: string
+  run_id: string
+  step: string
+  status: string
+  message: string | null
+  jobs_found: number
+  jobs_matched: number
+  jobs_applied: number
+  errors: Record<string, unknown> | null
+  started_at: string
+  completed_at: string | null
+  created_at: string
 }
 
 export interface Credential {
