@@ -1,8 +1,24 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
+// Uses admin store for portfolio data (skills, tools, projects from Supabase)
 
 const admin = useAdminStore()
+
+async function syncFromPortfolio() {
+  await Promise.all([admin.fetchSkills(), admin.fetchTools(), admin.fetchProjects()])
+  const portfolioSkills = new Set(form.value.skills)
+  for (const s of admin.skills) portfolioSkills.add(s.name)
+  for (const t of admin.tools) portfolioSkills.add(t.name)
+  for (const p of admin.projects) {
+    for (const tech of (p.tech_stack || [])) portfolioSkills.add(tech)
+  }
+  form.value.skills = [...portfolioSkills].sort()
+  synced.value = true
+  setTimeout(() => { synced.value = false }, 2000)
+}
+
+const synced = ref(false)
 
 const saving = ref(false)
 const saved = ref(false)
@@ -88,10 +104,17 @@ async function handleSave() {
   <div>
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold text-white">Job Profile & Preferences</h2>
-      <button @click="handleSave" :disabled="saving" class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
-        <svg v-if="saved" class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-        {{ saved ? 'Saved!' : saving ? 'Saving...' : 'Save Profile' }}
-      </button>
+      <div class="flex gap-2">
+        <button @click="syncFromPortfolio" class="px-4 py-2 bg-neural-700 text-gray-300 rounded-lg text-sm hover:bg-neural-600 flex items-center gap-2">
+          <svg v-if="!synced" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          <svg v-else class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+          {{ synced ? 'Synced!' : 'Sync from Portfolio' }}
+        </button>
+        <button @click="handleSave" :disabled="saving" class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
+          <svg v-if="saved" class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+          {{ saved ? 'Saved!' : saving ? 'Saving...' : 'Save Profile' }}
+        </button>
+      </div>
     </div>
 
     <div class="grid lg:grid-cols-2 gap-6">
