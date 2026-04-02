@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import type { JobListing } from '@/types/database'
-import { classifyJob, matchJob } from '@/utils/jobClassifyAgent'
+import { classifyJob, matchJob, generateCoverLetter } from '@/utils/jobClassifyAgent'
 
 const admin = useAdminStore()
 
@@ -19,6 +19,9 @@ const perPage = 25
 // Detail modal
 const showDetail = ref(false)
 const detailJob = ref<JobListing | null>(null)
+const detailTab = ref<'overview' | 'description' | 'match' | 'coverletter'>('overview')
+const generatingCover = ref(false)
+const coverLetter = ref('')
 
 // Bulk
 const selectedIds = ref<Set<string>>(new Set())
@@ -49,6 +52,12 @@ const filteredJobs = computed(() => {
   if (filterLocation.value) {
     const loc = filterLocation.value.toLowerCase()
     jobs = jobs.filter(j => j.location?.toLowerCase().includes(loc))
+  }
+  if (filterWFH.value) {
+    jobs = jobs.filter(j => {
+      const text = `${j.location || ''} ${j.job_type || ''} ${j.description || ''}`.toLowerCase()
+      return text.includes('remote') || text.includes('work from home') || text.includes('wfh') || text.includes('anywhere')
+    })
   }
   // Sort
   if (sortBy.value === 'match_score') jobs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0))
@@ -145,7 +154,27 @@ async function deleteJob(job: JobListing) {
   }
 }
 
-function viewDetail(job: JobListing) { detailJob.value = job; showDetail.value = true }
+const filterWFH = ref(false)
+
+function copyText(text: string) { globalThis.navigator.clipboard.writeText(text) }
+
+function viewDetail(job: JobListing) {
+  detailJob.value = job; detailTab.value = 'overview'; coverLetter.value = ''; showDetail.value = true
+}
+
+async function genCoverLetter() {
+  if (!detailJob.value) return
+  generatingCover.value = true
+  const profile = admin.jobProfile[0] || null
+  try {
+    coverLetter.value = await generateCoverLetter(
+      { title: detailJob.value.title, company: detailJob.value.company, description: detailJob.value.description },
+      { resume_text: profile?.resume_text, skills: profile?.skills },
+      roleType(detailJob.value), companyBucket(detailJob.value),
+    )
+  } catch (e) { coverLetter.value = `Error: ${e instanceof Error ? e.message : e}` }
+  generatingCover.value = false
+}
 
 function platformColor(p: string) {
   const c: Record<string, string> = {
@@ -242,6 +271,10 @@ function companyBucket(j: JobListing) {
         <option value="salary">Highest Salary</option>
         <option value="title">A-Z</option>
       </select>
+      <label class="flex items-center gap-1.5 cursor-pointer shrink-0">
+        <input type="checkbox" v-model="filterWFH" @change="currentPage = 1" class="rounded border-neural-600 bg-neural-800 text-cyber-purple focus:ring-cyber-purple w-3.5 h-3.5" />
+        <span class="text-[10px] text-gray-400">WFH Only</span>
+      </label>
       <span class="flex items-center text-[10px] text-gray-500 whitespace-nowrap">{{ filteredJobs.length }} jobs · Page {{ currentPage }}/{{ totalPages }}</span>
     </div>
 
@@ -353,51 +386,135 @@ function companyBucket(j: JobListing) {
       </div>
     </div>
 
-    <!-- Detail Modal -->
+    <!-- Detail Modal (Tabbed) -->
     <Teleport to="body">
       <div v-if="showDetail && detailJob" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="showDetail = false">
-        <div class="glass-dark rounded-xl w-full max-w-2xl border border-neural-600 max-h-[85vh] flex flex-col">
-          <div class="flex items-center justify-between px-6 py-4 border-b border-neural-700 shrink-0">
-            <div class="min-w-0">
-              <h3 class="text-lg font-bold text-white truncate">{{ detailJob.title }}</h3>
-              <p class="text-sm text-gray-400">{{ detailJob.company }} · {{ detailJob.location || 'Remote' }}</p>
+        <div class="glass-dark rounded-xl w-full max-w-3xl border border-neural-600 max-h-[90vh] flex flex-col">
+          <!-- Header -->
+          <div class="px-6 py-4 border-b border-neural-700 shrink-0">
+            <div class="flex items-center justify-between">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize" :class="platformColor(detailJob.platform)">{{ detailJob.platform }}</span>
+                  <span v-if="detailJob.match_score" class="px-2 py-0.5 rounded-full text-xs font-bold" :class="detailJob.match_score >= 75 ? 'bg-green-500/20 text-green-400' : detailJob.match_score >= 50 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-500/20 text-gray-400'">{{ detailJob.match_score }}% match</span>
+                  <span v-if="detailJob.job_type" class="px-2 py-0.5 rounded-full text-[10px] bg-neural-700/50 text-gray-300 capitalize">{{ detailJob.job_type }}</span>
+                </div>
+                <h3 class="text-lg font-bold text-white truncate">{{ detailJob.title }}</h3>
+                <p class="text-sm text-gray-400">{{ detailJob.company }} · {{ detailJob.location || 'Remote' }}</p>
+              </div>
+              <button @click="showDetail = false" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-white shrink-0 ml-3"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <span v-if="detailJob.match_score" class="px-2 py-1 rounded-full text-xs font-bold" :class="detailJob.match_score >= 75 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'">{{ detailJob.match_score }}%</span>
-              <span class="px-2 py-1 rounded-full text-xs capitalize" :class="platformColor(detailJob.platform)">{{ detailJob.platform }}</span>
-              <button @click="showDetail = false" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <!-- Tabs -->
+            <div class="flex gap-1 mt-3 -mb-4 pb-0">
+              <button v-for="tab in [{key:'overview',label:'Overview',icon:'📋'},{key:'description',label:'Details',icon:'📄'},{key:'match',label:'Match Analysis',icon:'🎯'},{key:'coverletter',label:'Cover Letter',icon:'✉️'}]" :key="tab.key"
+                @click="detailTab = tab.key as any"
+                class="px-3 py-2 rounded-t-lg text-xs font-medium transition-colors"
+                :class="detailTab === tab.key ? 'bg-neural-800 text-white border-t border-x border-neural-600' : 'text-gray-500 hover:text-gray-300'">
+                {{ tab.icon }} {{ tab.label }}
+              </button>
             </div>
           </div>
-          <div class="flex-1 overflow-y-auto p-6 space-y-4">
-            <!-- Meta -->
-            <div class="flex flex-wrap gap-2">
-              <span v-if="detailJob.job_type" class="px-2 py-1 rounded-full text-xs bg-neural-700/50 text-gray-300 capitalize">{{ detailJob.job_type }}</span>
-              <span v-if="detailJob.salary_min || detailJob.salary_max" class="px-2 py-1 rounded-full text-xs bg-green-500/15 text-green-400">{{ formatSalary(detailJob) }}</span>
-              <span v-if="roleType(detailJob)" class="px-2 py-1 rounded-full text-xs bg-violet-500/15 text-violet-400 capitalize">{{ roleType(detailJob).replace('_', ' ') }}</span>
-              <span v-if="companyBucket(detailJob)" class="px-2 py-1 rounded-full text-xs bg-cyan-500/15 text-cyan-400 capitalize">{{ companyBucket(detailJob).replace('_', ' ') }}</span>
+
+          <!-- Tab Content -->
+          <div class="flex-1 overflow-y-auto p-6">
+
+            <!-- Overview Tab -->
+            <div v-if="detailTab === 'overview'" class="space-y-4">
+              <div class="grid grid-cols-2 gap-4">
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                  <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Salary</p>
+                  <p class="text-sm font-medium" :class="detailJob.salary_min ? 'text-green-400' : 'text-gray-500'">{{ formatSalary(detailJob) }}</p>
+                </div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                  <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Job Type</p>
+                  <p class="text-sm font-medium text-white capitalize">{{ detailJob.job_type || 'Not specified' }}</p>
+                </div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                  <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Role Classification</p>
+                  <p class="text-sm font-medium text-violet-400 capitalize">{{ roleType(detailJob)?.replace('_', ' ') || 'Not classified' }}</p>
+                </div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                  <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Company Type</p>
+                  <p class="text-sm font-medium text-cyan-400 capitalize">{{ companyBucket(detailJob)?.replace('_', ' ') || 'Not classified' }}</p>
+                </div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                  <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Posted</p>
+                  <p class="text-sm font-medium text-white">{{ detailJob.posted_at ? new Date(detailJob.posted_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown' }}</p>
+                </div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                  <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Status</p>
+                  <p class="text-sm font-medium text-white capitalize">{{ detailJob.status }}</p>
+                </div>
+              </div>
+              <!-- Actions -->
+              <div class="flex gap-3 pt-3 border-t border-neural-700">
+                <button v-if="!['applied','dismissed'].includes(detailJob.status)" @click="applyToJob(detailJob); showDetail = false"
+                  class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90">Mark Applied</button>
+                <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="px-4 py-2 bg-neural-700 text-gray-300 rounded-lg text-sm hover:bg-neural-600 flex items-center gap-1.5">
+                  Open Original <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                </a>
+              </div>
             </div>
-            <!-- Skill matches -->
-            <div v-if="(detailJob.raw_data as any)?.skill_matches?.length" class="flex flex-wrap gap-1.5">
-              <span class="text-[10px] text-gray-500 mr-1">Matched:</span>
-              <span v-for="s in (detailJob.raw_data as any).skill_matches" :key="s" class="px-2 py-0.5 rounded-full text-[10px] bg-green-500/10 text-green-400">{{ s }}</span>
+
+            <!-- Description Tab -->
+            <div v-if="detailTab === 'description'" class="space-y-4">
+              <div v-if="detailJob.description" class="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{{ detailJob.description }}</div>
+              <div v-else class="text-center py-8 text-gray-500 text-sm">No description available. <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="text-cyber-cyan hover:underline">View on {{ detailJob.platform }}</a></div>
+              <div v-if="detailJob.requirements" class="mt-4 pt-4 border-t border-neural-700">
+                <h4 class="text-sm font-semibold text-white mb-2">Requirements</h4>
+                <div class="text-sm text-gray-400 leading-relaxed whitespace-pre-wrap">{{ detailJob.requirements }}</div>
+              </div>
             </div>
-            <div v-if="(detailJob.raw_data as any)?.skill_gaps?.length" class="flex flex-wrap gap-1.5">
-              <span class="text-[10px] text-gray-500 mr-1">Gaps:</span>
-              <span v-for="s in (detailJob.raw_data as any).skill_gaps" :key="s" class="px-2 py-0.5 rounded-full text-[10px] bg-red-500/10 text-red-400">{{ s }}</span>
+
+            <!-- Match Analysis Tab -->
+            <div v-if="detailTab === 'match'" class="space-y-4">
+              <div v-if="detailJob.match_score" class="text-center py-4">
+                <div class="text-5xl font-bold mb-2" :class="detailJob.match_score >= 75 ? 'text-green-400' : detailJob.match_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ detailJob.match_score }}%</div>
+                <p class="text-sm text-gray-400">{{ (detailJob.raw_data as any)?.recommendation?.replace('_', ' ') || 'Match Score' }}</p>
+              </div>
+              <div v-else class="text-center py-8">
+                <p class="text-gray-500 text-sm mb-3">Not scored yet</p>
+                <button @click="async () => { if (!detailJob) return; const p = admin.jobProfile[0] || null; try { const cl = await classifyJob(detailJob.title, detailJob.company, detailJob.description || undefined); const mt = await matchJob({title:detailJob.title,company:detailJob.company,description:detailJob.description,requirements:detailJob.requirements},{resume_text:p?.resume_text,skills:p?.skills}); await admin.updateRow('job_listings', detailJob.id, {match_score:mt.match_score,raw_data:{...(detailJob.raw_data as any||{}),role_type:cl.role_type,company_bucket:cl.company_bucket,skill_matches:mt.skill_matches,skill_gaps:mt.skill_gaps,recommendation:mt.recommendation}}); await admin.fetchJobListings(); detailJob = admin.jobListings.find(j=>j.id===detailJob!.id)||detailJob } catch {} }"
+                  class="px-4 py-2 bg-yellow-500/20 text-yellow-400 rounded-lg text-xs font-medium hover:bg-yellow-500/30">Score with AI</button>
+              </div>
+              <!-- Skill matches -->
+              <div v-if="(detailJob.raw_data as any)?.skill_matches?.length" class="bg-neural-800/50 rounded-lg p-4 border border-neural-700/30">
+                <h4 class="text-xs text-green-400 font-semibold mb-2 uppercase tracking-wider">Skills Matched</h4>
+                <div class="flex flex-wrap gap-1.5">
+                  <span v-for="s in (detailJob.raw_data as any).skill_matches" :key="s" class="px-2.5 py-1 rounded-full text-xs bg-green-500/10 text-green-400 border border-green-500/20">{{ s }}</span>
+                </div>
+              </div>
+              <div v-if="(detailJob.raw_data as any)?.skill_gaps?.length" class="bg-neural-800/50 rounded-lg p-4 border border-neural-700/30">
+                <h4 class="text-xs text-red-400 font-semibold mb-2 uppercase tracking-wider">Skills Missing</h4>
+                <div class="flex flex-wrap gap-1.5">
+                  <span v-for="s in (detailJob.raw_data as any).skill_gaps" :key="s" class="px-2.5 py-1 rounded-full text-xs bg-red-500/10 text-red-400 border border-red-500/20">{{ s }}</span>
+                </div>
+              </div>
             </div>
-            <!-- Description -->
-            <div v-if="detailJob.description" class="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{{ detailJob.description }}</div>
-            <!-- Requirements -->
-            <div v-if="detailJob.requirements" class="mt-4">
-              <h4 class="text-sm font-semibold text-white mb-2">Requirements</h4>
-              <div class="text-sm text-gray-400 leading-relaxed whitespace-pre-wrap">{{ detailJob.requirements }}</div>
+
+            <!-- Cover Letter Tab -->
+            <div v-if="detailTab === 'coverletter'" class="space-y-4">
+              <div v-if="!coverLetter" class="text-center py-8">
+                <p class="text-gray-500 text-sm mb-3">Generate a tailored cover letter for this specific job</p>
+                <button @click="genCoverLetter" :disabled="generatingCover"
+                  class="px-5 py-2.5 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2 mx-auto">
+                  <svg v-if="!generatingCover" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  {{ generatingCover ? 'Generating...' : 'Generate Cover Letter' }}
+                </button>
+              </div>
+              <div v-else>
+                <div class="flex items-center justify-between mb-3">
+                  <h4 class="text-sm font-semibold text-white">Generated Cover Letter</h4>
+                  <div class="flex gap-2">
+                    <button @click="copyText(coverLetter)" class="px-3 py-1 bg-neural-700 text-gray-300 rounded text-[10px] hover:bg-neural-600">Copy</button>
+                    <button @click="coverLetter = ''" class="px-3 py-1 bg-neural-700 text-gray-300 rounded text-[10px] hover:bg-neural-600">Regenerate</button>
+                  </div>
+                </div>
+                <div class="bg-neural-800/50 rounded-lg p-5 border border-neural-700/30 text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{{ coverLetter }}</div>
+              </div>
             </div>
-            <!-- Actions -->
-            <div class="flex gap-3 pt-4 border-t border-neural-700">
-              <button v-if="!['applied','dismissed'].includes(detailJob.status)" @click="applyToJob(detailJob); showDetail = false"
-                class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90">Mark Applied</button>
-              <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="px-4 py-2 bg-neural-700 text-gray-300 rounded-lg text-sm hover:bg-neural-600">Open Original &rarr;</a>
-            </div>
+
           </div>
         </div>
       </div>
