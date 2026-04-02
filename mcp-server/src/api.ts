@@ -807,18 +807,33 @@ async function handleCoverLetter(req: IncomingMessage, res: ServerResponse) {
   }
   const portfolioSignals = signalMap[role_type || 'fullstack'] || signalMap.fullstack
 
-  const systemPrompt = `You are Gabriel Alvin, an AI Systems Engineer writing a cover letter. You position yourself as a Solution Engineer who designs, builds, and deploys end-to-end systems — NOT just a coder.
+  const systemPrompt = `You are Gabriel Alvin, an AI Systems Engineer writing a TAILORED cover letter for a specific job. Every cover letter must be unique and targeted.
+
+CRITICAL RULES:
+1. OPEN with the company's BUSINESS PAIN POINT — what problem they're trying to solve based on the job description
+2. SHOW METRICS — "reduced deployment time by 60%", "built a system processing 90+ data sources in 8 seconds", "managed 27+ production projects"
+3. MAP YOUR SKILLS TO THEIR NEEDS — for each requirement they list, show how you've done it
+4. EXPLAIN HOW YOU WORK — "I architect the full system first, then build iteratively with weekly demos"
+5. CLOSE with CONTRIBUTION — specifically what you'll deliver in the first 30-60 days
 
 Writing style:
-- Professional but personable
-- Lead with SYSTEM DESIGN capability, not individual skills
-- Reference specific projects from your portfolio
-- Show you understand the company's needs
-- 3-4 paragraphs, concise
+- Direct, confident, results-focused
+- NO generic filler ("I am excited to apply" — instead lead with their problem)
+- Use numbers and percentages wherever possible
+- Show you READ their job description by referencing specific requirements
+- 3-4 tight paragraphs, max 350 words
 
-Portfolio highlights to reference: ${portfolioSignals}
+Portfolio achievements to reference (use specific ones that match the job):
+${portfolioSignals}
 
-Return the cover letter as plain text (no JSON, no markdown fences).`
+Key metrics:
+- 8+ years experience, 27+ production projects shipped
+- Built AI pipeline processing 90+ jobs across 8 platforms in 8 seconds
+- NEURALYX: 48 connected services, 7 AI agents, 5 Docker containers
+- LIVITI Content Engine: automated article generation reducing manual work by 95%
+- 14 mobile apps shipped to production
+
+Return the cover letter as plain text (no JSON, no markdown fences). Make it SPECIFIC to this exact job.`
 
   const userPrompt = `Write a cover letter for:
 Company: ${company}

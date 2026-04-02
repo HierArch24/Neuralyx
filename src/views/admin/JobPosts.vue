@@ -11,7 +11,10 @@ const search = ref('')
 const filterPlatform = ref('')
 const filterStatus = ref('')
 const filterType = ref('')
+const filterLocation = ref('')
 const sortBy = ref('created_at')
+const currentPage = ref(1)
+const perPage = 25
 
 // Detail modal
 const showDetail = ref(false)
@@ -43,12 +46,37 @@ const filteredJobs = computed(() => {
   if (filterPlatform.value) jobs = jobs.filter(j => j.platform === filterPlatform.value)
   if (filterStatus.value) jobs = jobs.filter(j => j.status === filterStatus.value)
   if (filterType.value) jobs = jobs.filter(j => j.job_type === filterType.value)
+  if (filterLocation.value) {
+    const loc = filterLocation.value.toLowerCase()
+    jobs = jobs.filter(j => j.location?.toLowerCase().includes(loc))
+  }
   // Sort
   if (sortBy.value === 'match_score') jobs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0))
   else if (sortBy.value === 'salary') jobs.sort((a, b) => (b.salary_max || b.salary_min || 0) - (a.salary_max || a.salary_min || 0))
   else if (sortBy.value === 'title') jobs.sort((a, b) => a.title.localeCompare(b.title))
   else jobs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   return jobs
+})
+
+const totalPages = computed(() => Math.ceil(filteredJobs.value.length / perPage))
+const paginatedJobs = computed(() => {
+  const start = (currentPage.value - 1) * perPage
+  return filteredJobs.value.slice(start, start + perPage)
+})
+
+// Location options
+const locationOptions = computed(() => {
+  const locs = new Map<string, number>()
+  for (const j of admin.jobListings) {
+    const loc = j.location || 'Unknown'
+    const key = loc.toLowerCase().includes('remote') ? 'Remote'
+      : loc.toLowerCase().includes('philippines') || loc.toLowerCase().includes('manila') ? 'Philippines'
+      : loc.toLowerCase().includes('united states') || loc.includes(', US') ? 'United States'
+      : loc.toLowerCase().includes('europe') || loc.toLowerCase().includes('germany') || loc.toLowerCase().includes('berlin') ? 'Europe'
+      : loc.split(',')[0].trim()
+    locs.set(key, (locs.get(key) || 0) + 1)
+  }
+  return [...locs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15)
 })
 
 function toggleSelect(id: string) {
@@ -204,12 +232,17 @@ function companyBucket(j: JobListing) {
         <option value="contract">Contract</option>
         <option value="part-time">Part-time</option>
       </select>
+      <select v-model="filterLocation" @change="currentPage = 1" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
+        <option value="">All Locations</option>
+        <option v-for="[loc, count] in locationOptions" :key="loc" :value="loc.toLowerCase()">{{ loc }} ({{ count }})</option>
+      </select>
       <select v-model="sortBy" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
         <option value="created_at">Newest</option>
         <option value="match_score">Best Match</option>
         <option value="salary">Highest Salary</option>
         <option value="title">A-Z</option>
       </select>
+      <span class="flex items-center text-[10px] text-gray-500 whitespace-nowrap">{{ filteredJobs.length }} jobs · Page {{ currentPage }}/{{ totalPages }}</span>
     </div>
 
     <!-- Bulk Actions Bar -->
@@ -251,11 +284,11 @@ function companyBucket(j: JobListing) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(job, idx) in filteredJobs" :key="job.id"
+          <tr v-for="(job, idx) in paginatedJobs" :key="job.id"
             class="border-t border-neural-700/30 hover:bg-neural-700/20 transition-colors"
             :class="selectedIds.has(job.id) ? 'bg-cyber-purple/5' : ''">
             <td class="px-3 py-2.5"><input type="checkbox" :checked="selectedIds.has(job.id)" @change="toggleSelect(job.id)" class="rounded border-neural-600 bg-neural-800 text-cyber-purple focus:ring-cyber-purple w-3.5 h-3.5" /></td>
-            <td class="px-3 py-2.5 text-gray-600 text-[10px]">{{ idx + 1 }}</td>
+            <td class="px-3 py-2.5 text-gray-600 text-[10px]">{{ (currentPage - 1) * perPage + idx + 1 }}</td>
             <td class="px-3 py-2.5">
               <button @click="viewDetail(job)" class="text-left group">
                 <p class="text-white font-medium text-xs truncate max-w-[220px] group-hover:text-cyber-cyan transition-colors">{{ job.title }}</p>
@@ -300,6 +333,24 @@ function companyBucket(j: JobListing) {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between mt-4">
+      <p class="text-[10px] text-gray-500">Showing {{ (currentPage - 1) * perPage + 1 }}-{{ Math.min(currentPage * perPage, filteredJobs.length) }} of {{ filteredJobs.length }}</p>
+      <div class="flex items-center gap-1">
+        <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1"
+          class="px-3 py-1.5 rounded-lg text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30 transition-colors">&larr;</button>
+        <template v-for="page in totalPages" :key="page">
+          <button v-if="page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)"
+            @click="currentPage = page"
+            class="w-7 h-7 rounded-lg text-[10px] font-medium transition-colors"
+            :class="page === currentPage ? 'bg-cyber-purple/20 text-cyber-purple' : 'text-gray-500 hover:text-white'">{{ page }}</button>
+          <span v-else-if="page === currentPage - 2 || page === currentPage + 2" class="text-gray-600 text-[10px]">...</span>
+        </template>
+        <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages"
+          class="px-3 py-1.5 rounded-lg text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30 transition-colors">&rarr;</button>
+      </div>
     </div>
 
     <!-- Detail Modal -->
