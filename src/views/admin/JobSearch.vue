@@ -1,115 +1,84 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import type { JobListing } from '@/types/database'
 import { searchJobs } from '@/utils/jobSearchAgent'
-import { classifyJob, matchJob } from '@/utils/jobClassifyAgent'
+import { classifyJob, matchJob, generateCoverLetter } from '@/utils/jobClassifyAgent'
 
 const admin = useAdminStore()
 
 // Search
 const searchQuery = ref('')
 const searchLocation = ref('')
-const searchType = ref('')
-const searchPlatform = ref('')
 const searching = ref(false)
-const searchError = ref('')
 const searchStatus = ref('')
+const searchError = ref('')
 
-// Filters for cached results
+// Filters
+const filterPlatform = ref('')
 const filterStatus = ref('')
+const filterType = ref('')
+const filterWFH = ref(true) // DEFAULT: WFH only
+const filterLocation = ref('')
 const sortBy = ref('created_at')
+const currentPage = ref(1)
+const perPage = 20
 
 // Detail modal
 const showDetail = ref(false)
 const detailJob = ref<JobListing | null>(null)
+const detailTab = ref<'overview' | 'description' | 'match' | 'coverletter'>('overview')
+const coverLetter = ref('')
+const generatingCover = ref(false)
 
-// AI Scoring
+// Bulk
+const selectedIds = ref<Set<string>>(new Set())
+const selectAll = ref(false)
 const scoring = ref(false)
 const scoreProgress = ref('')
-const scoringJobId = ref<string | null>(null)
 
-async function scoreAllJobs() {
-  await admin.fetchJobProfile()
-  const profile = admin.jobProfile[0] || null
-  const unscored = admin.jobListings.filter(j => j.match_score === null && j.status === 'new')
-  if (unscored.length === 0) { scoreProgress.value = 'All jobs already scored'; setTimeout(() => { scoreProgress.value = '' }, 2000); return }
-
-  scoring.value = true
-  let done = 0
-  for (const job of unscored) {
-    scoreProgress.value = `Scoring ${++done}/${unscored.length}: ${job.title.slice(0, 40)}...`
-    try {
-      // Classify
-      const classify = await classifyJob(job.title, job.company, job.description || undefined)
-      // Match
-      const matchResult = await matchJob(
-        { title: job.title, company: job.company, description: job.description, requirements: job.requirements },
-        { resume_text: profile?.resume_text, skills: profile?.skills, preferred_job_types: profile?.preferred_job_types, preferred_locations: profile?.preferred_locations },
-      )
-      // Update DB
-      const updates: Record<string, unknown> = { match_score: matchResult.match_score }
-      if (classify.role_type) updates.raw_data = { ...((job.raw_data as Record<string, unknown>) || {}), role_type: classify.role_type, company_bucket: classify.company_bucket, confidence: classify.confidence, skill_matches: matchResult.skill_matches, skill_gaps: matchResult.skill_gaps, recommendation: matchResult.recommendation }
-      await admin.updateRow('job_listings', job.id, updates)
-    } catch { /* skip on error */ }
-  }
-  await admin.fetchJobListings()
-  scoring.value = false
-  scoreProgress.value = `Scored ${done} jobs`
-  setTimeout(() => { scoreProgress.value = '' }, 3000)
+// Platform config with logos
+const PLATFORMS: Record<string, { label: string; color: string; bg: string }> = {
+  indeed: { label: 'Indeed', color: 'text-blue-400', bg: 'bg-blue-500/15' },
+  linkedin: { label: 'LinkedIn', color: 'text-sky-400', bg: 'bg-sky-500/15' },
+  glassdoor: { label: 'Glassdoor', color: 'text-green-400', bg: 'bg-green-500/15' },
+  ziprecruiter: { label: 'ZipRecruiter', color: 'text-emerald-400', bg: 'bg-emerald-500/15' },
+  google: { label: 'Google Jobs', color: 'text-red-300', bg: 'bg-red-500/15' },
+  remoteok: { label: 'RemoteOK', color: 'text-teal-400', bg: 'bg-teal-500/15' },
+  remotive: { label: 'Remotive', color: 'text-indigo-400', bg: 'bg-indigo-500/15' },
+  himalayas: { label: 'Himalayas', color: 'text-amber-400', bg: 'bg-amber-500/15' },
+  hackernews: { label: 'HN/YC', color: 'text-orange-400', bg: 'bg-orange-500/15' },
+  arbeitnow: { label: 'Arbeitnow', color: 'text-pink-400', bg: 'bg-pink-500/15' },
+  adzuna: { label: 'Adzuna', color: 'text-yellow-400', bg: 'bg-yellow-500/15' },
+  jsearch: { label: 'JSearch', color: 'text-blue-300', bg: 'bg-blue-500/15' },
 }
 
-async function scoreOneJob(job: JobListing) {
-  scoringJobId.value = job.id
-  await admin.fetchJobProfile()
-  const profile = admin.jobProfile[0] || null
-  try {
-    const classify = await classifyJob(job.title, job.company, job.description || undefined)
-    const matchResult = await matchJob(
-      { title: job.title, company: job.company, description: job.description, requirements: job.requirements },
-      { resume_text: profile?.resume_text, skills: profile?.skills, preferred_job_types: profile?.preferred_job_types, preferred_locations: profile?.preferred_locations },
-    )
-    const updates: Record<string, unknown> = {
-      match_score: matchResult.match_score,
-      raw_data: { ...((job.raw_data as Record<string, unknown>) || {}), role_type: classify.role_type, company_bucket: classify.company_bucket, skill_matches: matchResult.skill_matches, skill_gaps: matchResult.skill_gaps, recommendation: matchResult.recommendation },
-    }
-    await admin.updateRow('job_listings', job.id, updates)
-    await admin.fetchJobListings()
-  } catch { /* error */ }
-  scoringJobId.value = null
-}
+onMounted(() => { admin.fetchJobListings(); admin.fetchJobProfile() })
 
-const PLATFORMS = [
-  { id: 'linkedin', label: 'LinkedIn', icon: '🟦' },
-  { id: 'indeed', label: 'Indeed', icon: '🔵' },
-  { id: 'glassdoor', label: 'Glassdoor', icon: '🟢' },
-  { id: 'remoteok', label: 'RemoteOK', icon: '🌍' },
-  { id: 'remotive', label: 'Remotive', icon: '🏠' },
-  { id: 'himalayas', label: 'Himalayas', icon: '⛰️' },
-  { id: 'hackernews', label: 'HN/YC Jobs', icon: '🟧' },
-  { id: 'arbeitnow', label: 'Arbeitnow', icon: '🇪🇺' },
-  { id: 'ziprecruiter', label: 'ZipRecruiter', icon: '🟩' },
-  { id: 'google', label: 'Google Jobs', icon: '🔴' },
-  { id: 'adzuna', label: 'Adzuna', icon: '🔶' },
-  { id: 'jobstreet', label: 'JobStreet', icon: '🟣' },
-]
-const JOB_TYPES = ['full-time', 'part-time', 'contract', 'remote', 'hybrid', 'internship']
+// Platform stats
+const platformStats = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const j of admin.jobListings) counts[j.platform] = (counts[j.platform] || 0) + 1
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])
+})
 
-onMounted(() => admin.fetchJobListings())
-
-const displayJobs = computed(() => {
+// Filter + paginate
+const filteredJobs = computed(() => {
   let jobs = [...admin.jobListings]
-  if (searchQuery.value) {
+  if (searchQuery.value && !searching.value) {
     const q = searchQuery.value.toLowerCase()
     jobs = jobs.filter(j => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q) || (j.description?.toLowerCase().includes(q)))
   }
-  if (searchPlatform.value) jobs = jobs.filter(j => j.platform === searchPlatform.value)
-  if (searchType.value) jobs = jobs.filter(j => j.job_type === searchType.value)
-  if (searchLocation.value) {
-    const l = searchLocation.value.toLowerCase()
-    jobs = jobs.filter(j => j.location?.toLowerCase().includes(l))
-  }
+  if (filterPlatform.value) jobs = jobs.filter(j => j.platform === filterPlatform.value)
   if (filterStatus.value) jobs = jobs.filter(j => j.status === filterStatus.value)
+  if (filterType.value) jobs = jobs.filter(j => j.job_type === filterType.value)
+  if (filterLocation.value) jobs = jobs.filter(j => j.location?.toLowerCase().includes(filterLocation.value.toLowerCase()))
+  if (filterWFH.value) {
+    jobs = jobs.filter(j => {
+      const text = `${j.location || ''} ${j.job_type || ''} ${j.title || ''} ${j.description || ''}`.toLowerCase()
+      return text.includes('remote') || text.includes('work from home') || text.includes('wfh') || text.includes('anywhere') || text.includes('hybrid')
+    })
+  }
   // Sort
   if (sortBy.value === 'match_score') jobs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0))
   else if (sortBy.value === 'salary') jobs.sort((a, b) => (b.salary_max || b.salary_min || 0) - (a.salary_max || a.salary_min || 0))
@@ -117,80 +86,93 @@ const displayJobs = computed(() => {
   return jobs
 })
 
+const totalPages = computed(() => Math.ceil(filteredJobs.value.length / perPage))
+const paginatedJobs = computed(() => filteredJobs.value.slice((currentPage.value - 1) * perPage, currentPage.value * perPage))
+
+// Reset page on filter change
+watch([filterPlatform, filterStatus, filterType, filterWFH, filterLocation, sortBy], () => { currentPage.value = 1 })
+
+// ─── Actions ───
 async function doSearch() {
   if (!searchQuery.value.trim()) return
-  searching.value = true
-  searchError.value = ''
-  searchStatus.value = ''
-
+  searching.value = true; searchError.value = ''; searchStatus.value = ''
   try {
     const { jobs, errors } = await searchJobs(
-      { query: searchQuery.value, location: searchLocation.value, job_type: searchType.value, platform: searchPlatform.value },
+      { query: searchQuery.value, location: searchLocation.value },
       (msg) => { searchStatus.value = msg },
     )
-
-    if (errors.length > 0 && jobs.length === 0) {
-      searchError.value = errors.join('\n')
-    } else {
-      // Save results to Supabase
-      searchStatus.value = `Saving ${jobs.length} jobs to database...`
+    if (errors.length > 0 && jobs.length === 0) { searchError.value = errors.join('\n') }
+    else {
+      searchStatus.value = `Saving ${jobs.length} jobs...`
       let saved = 0
       for (const job of jobs) {
-        try {
-          await admin.insertRow('job_listings', job as unknown as Record<string, unknown>)
-          saved++
-        } catch { /* duplicate or error */ }
+        try { await admin.insertRow('job_listings', job as unknown as Record<string, unknown>); saved++ } catch { /* dup */ }
       }
       await admin.fetchJobListings()
-      searchStatus.value = saved > 0 ? `Saved ${saved} new jobs` : `Found ${jobs.length} jobs (all already in database)`
+      searchStatus.value = saved > 0 ? `${saved} new jobs saved` : `${jobs.length} found (all already in DB)`
       setTimeout(() => { searchStatus.value = '' }, 3000)
     }
-  } catch (e) {
-    searchError.value = e instanceof Error ? e.message : 'Search failed'
-  } finally {
-    searching.value = false
+  } catch (e) { searchError.value = e instanceof Error ? e.message : 'Search failed' }
+  finally { searching.value = false }
+}
+
+async function scoreSelected() {
+  scoring.value = true
+  const profile = admin.jobProfile[0] || null
+  const toScore = filteredJobs.value.filter(j => selectedIds.value.has(j.id) && j.match_score === null)
+  let done = 0
+  for (const job of toScore) {
+    scoreProgress.value = `${++done}/${toScore.length}`
+    try {
+      const cl = await classifyJob(job.title, job.company, job.description || undefined)
+      const mt = await matchJob({ title: job.title, company: job.company, description: job.description, requirements: job.requirements }, { resume_text: profile?.resume_text, skills: profile?.skills })
+      await admin.updateRow('job_listings', job.id, { match_score: mt.match_score, raw_data: { ...(job.raw_data as Record<string, unknown> || {}), role_type: cl.role_type, company_bucket: cl.company_bucket, skill_matches: mt.skill_matches, skill_gaps: mt.skill_gaps, recommendation: mt.recommendation } })
+    } catch { /* skip */ }
   }
-}
-
-async function saveJob(job: JobListing) {
-  await admin.updateRow('job_listings', job.id, { status: 'saved' })
   await admin.fetchJobListings()
+  scoring.value = false; scoreProgress.value = ''; selectedIds.value.clear(); selectAll.value = false
 }
 
-async function dismissJob(job: JobListing) {
-  await admin.updateRow('job_listings', job.id, { status: 'dismissed' })
-  await admin.fetchJobListings()
-}
-
-async function applyToJob(job: JobListing) {
-  await admin.insertRow('job_applications', {
-    job_listing_id: job.id, platform: job.platform,
-    channel: 'direct', status: 'applied', applied_via: 'manual',
-  })
-  await admin.updateRow('job_listings', job.id, { status: 'applied' })
-  await Promise.all([admin.fetchJobListings(), admin.fetchJobApplications()])
+async function bulkDismiss() {
+  for (const id of selectedIds.value) await admin.updateRow('job_listings', id, { status: 'dismissed' })
+  selectedIds.value.clear(); selectAll.value = false; await admin.fetchJobListings()
 }
 
 async function deleteJob(job: JobListing) {
-  if (confirm(`Remove "${job.title}" from ${job.company}?`)) {
-    await admin.deleteRow('job_listings', job.id)
-    await admin.fetchJobListings()
-  }
+  if (confirm(`Remove "${job.title}"?`)) { await admin.deleteRow('job_listings', job.id); await admin.fetchJobListings() }
 }
 
-function viewDetail(job: JobListing) { detailJob.value = job; showDetail.value = true }
-
-function platformColor(p: string) {
-  const c: Record<string, string> = {
-    indeed: 'bg-blue-500/15 text-blue-400', linkedin: 'bg-sky-500/15 text-sky-400',
-    glassdoor: 'bg-green-500/15 text-green-400', ziprecruiter: 'bg-emerald-500/15 text-emerald-400',
-    google: 'bg-red-500/15 text-red-300', jobstreet: 'bg-purple-500/15 text-purple-400',
-    onlinejobs: 'bg-orange-500/15 text-orange-400', bossjob: 'bg-yellow-500/15 text-yellow-400',
-    kalibrr: 'bg-cyan-500/15 text-cyan-400', bestjobs: 'bg-pink-500/15 text-pink-400',
-    facebook: 'bg-indigo-500/15 text-indigo-400',
-  }
-  return c[p] || 'bg-gray-500/15 text-gray-400'
+function toggleSelect(id: string) { selectedIds.value.has(id) ? selectedIds.value.delete(id) : selectedIds.value.add(id) }
+function toggleSelectAll() {
+  if (selectAll.value) { selectedIds.value.clear(); selectAll.value = false }
+  else { paginatedJobs.value.forEach(j => selectedIds.value.add(j.id)); selectAll.value = true }
 }
+
+// ─── Detail Modal ───
+function viewDetail(job: JobListing) {
+  detailJob.value = job; detailTab.value = 'overview'; coverLetter.value = ''; showDetail.value = true
+  // Auto-generate cover letter in background
+  autoGenCoverLetter(job)
+}
+
+async function autoGenCoverLetter(job: JobListing) {
+  generatingCover.value = true
+  const profile = admin.jobProfile[0] || null
+  try {
+    coverLetter.value = await generateCoverLetter(
+      { title: job.title, company: job.company, description: job.description },
+      { resume_text: profile?.resume_text, skills: profile?.skills },
+      rd(job, 'role_type'), rd(job, 'company_bucket'),
+    )
+  } catch { coverLetter.value = '' }
+  generatingCover.value = false
+}
+
+function copyText(text: string) { globalThis.navigator.clipboard.writeText(text) }
+
+// ─── Helpers ───
+function p(platform: string) { return PLATFORMS[platform] || { label: platform, color: 'text-gray-400', bg: 'bg-gray-500/15' } }
+function rd(job: JobListing, key: string) { return ((job.raw_data as Record<string, unknown>)?.[key] as string) || '' }
 
 function formatSalary(j: JobListing) {
   if (!j.salary_min && !j.salary_max) return '—'
@@ -199,158 +181,133 @@ function formatSalary(j: JobListing) {
   return `${j.salary_currency} ${f(j.salary_min || j.salary_max || 0)}+`
 }
 
-function timeAgo(d: string) {
+function timeAgo(d: string | null) {
+  if (!d) return '—'
   const diff = Date.now() - new Date(d).getTime()
   const days = Math.floor(diff / 86400000)
   if (days === 0) return 'Today'
   if (days === 1) return 'Yesterday'
-  if (days < 30) return `${days}d ago`
+  if (days < 7) return `${days}d ago`
+  if (days < 30) return `${Math.floor(days / 7)}w ago`
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function matchColor(score: number | null) {
+  if (!score) return 'text-gray-600'
+  if (score >= 80) return 'text-green-400'
+  if (score >= 60) return 'text-yellow-400'
+  if (score >= 40) return 'text-orange-400'
+  return 'text-red-400'
 }
 </script>
 
 <template>
   <div>
-    <h2 class="text-2xl font-bold text-white mb-6">Job Search</h2>
-
-    <!-- Search Form -->
-    <div class="glass-dark rounded-xl p-5 border border-neural-700/50 mb-6">
-      <form @submit.prevent="doSearch" class="space-y-3">
-        <div class="flex flex-wrap gap-3">
-          <div class="flex-1 min-w-[200px] relative">
-            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input v-model="searchQuery" placeholder="AI Engineer, Vue Developer, DevOps..."
-              class="w-full pl-10 pr-4 py-2.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
-          </div>
-          <div class="w-44">
-            <input v-model="searchLocation" placeholder="Location..." class="w-full px-3 py-2.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
-          </div>
-          <button type="submit" :disabled="searching || !searchQuery.trim()"
-            class="px-6 py-2.5 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-2 shrink-0">
-            <svg v-if="!searching" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-            {{ searching ? 'Searching...' : 'Search' }}
-          </button>
+    <!-- Search Bar -->
+    <div class="glass-dark rounded-xl p-4 border border-neural-700/50 mb-5">
+      <form @submit.prevent="doSearch" class="flex gap-3">
+        <div class="flex-1 relative">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <input v-model="searchQuery" placeholder="AI Engineer, Vue Developer, Python..."
+            class="w-full pl-10 pr-4 py-2.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
         </div>
-        <!-- Platform Pills -->
-        <div class="flex flex-wrap gap-1.5">
-          <button type="button" @click="searchPlatform = searchPlatform === '' ? '' : ''"
-            class="px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors"
-            :class="searchPlatform === '' ? 'bg-cyber-purple/20 text-cyber-purple' : 'bg-neural-700/50 text-gray-500 hover:text-gray-300'">All</button>
-          <button v-for="p in PLATFORMS" :key="p.id" type="button" @click="searchPlatform = searchPlatform === p.id ? '' : p.id"
-            class="px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors flex items-center gap-1"
-            :class="searchPlatform === p.id ? 'bg-cyber-purple/20 text-cyber-purple' : 'bg-neural-700/50 text-gray-500 hover:text-gray-300'">
-            <span>{{ p.icon }}</span>{{ p.label }}
-          </button>
-        </div>
-        <!-- Filters row -->
-        <div class="flex gap-3">
-          <select v-model="searchType" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
-            <option value="">All Types</option>
-            <option v-for="t in JOB_TYPES" :key="t" :value="t">{{ t }}</option>
-          </select>
-          <select v-model="filterStatus" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
-            <option value="">All Status</option>
-            <option value="new">New</option>
-            <option value="saved">Saved</option>
-            <option value="applied">Applied</option>
-            <option value="dismissed">Dismissed</option>
-          </select>
-          <select v-model="sortBy" class="px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
-            <option value="created_at">Newest</option>
-            <option value="match_score">Best Match</option>
-            <option value="salary">Highest Salary</option>
-          </select>
-          <span class="flex items-center text-[10px] text-gray-500 ml-auto">{{ displayJobs.length }} results</span>
-        </div>
+        <input v-model="searchLocation" placeholder="Philippines, Remote..." class="w-40 px-3 py-2.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
+        <button type="submit" :disabled="searching || !searchQuery.trim()"
+          class="px-5 py-2.5 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-2 shrink-0">
+          <svg v-if="!searching" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          {{ searching ? 'Searching...' : 'Pull Jobs' }}
+        </button>
       </form>
-      <p v-if="searchStatus" class="text-xs text-blue-400 mt-2">{{ searchStatus }}</p>
+      <p v-if="searchStatus" class="text-xs text-cyan-400 mt-2">{{ searchStatus }}</p>
       <p v-if="searchError" class="text-xs text-red-400 mt-2">{{ searchError }}</p>
     </div>
 
-    <!-- AI Score Banner -->
-    <div v-if="admin.jobListings.filter(j => j.match_score === null && j.status === 'new').length > 0" class="glass-dark rounded-xl p-4 border border-yellow-500/20 mb-6 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="text-lg">🎯</span>
-        <div>
-          <p class="text-sm text-white font-medium">{{ admin.jobListings.filter(j => j.match_score === null && j.status === 'new').length }} unscored jobs</p>
-          <p class="text-[10px] text-gray-500">AI will classify role type, company bucket, and compute match score</p>
-        </div>
-      </div>
-      <button @click="scoreAllJobs" :disabled="scoring"
-        class="px-4 py-2 bg-gradient-to-r from-yellow-600 to-orange-500 text-white rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2 shrink-0">
-        <svg v-if="!scoring" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-        <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-        {{ scoring ? 'Scoring...' : 'Score All with AI' }}
+    <!-- Platform Pills -->
+    <div class="flex flex-wrap gap-1.5 mb-4">
+      <button @click="filterPlatform = ''" class="px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors"
+        :class="filterPlatform === '' ? 'bg-cyber-purple/20 text-cyber-purple' : 'bg-neural-700/50 text-gray-500 hover:text-gray-300'">
+        All ({{ admin.jobListings.length }})
+      </button>
+      <button v-for="[plat, count] in platformStats" :key="plat" @click="filterPlatform = filterPlatform === plat ? '' : plat"
+        class="px-2.5 py-1 rounded-full text-[10px] font-medium transition-colors capitalize flex items-center gap-1"
+        :class="filterPlatform === plat ? p(plat).bg + ' ' + p(plat).color : 'bg-neural-700/50 text-gray-500 hover:text-gray-300'">
+        {{ p(plat).label }} ({{ count }})
       </button>
     </div>
-    <p v-if="scoreProgress" class="text-xs text-yellow-400 mb-4">{{ scoreProgress }}</p>
 
-    <!-- Results -->
-    <div v-if="displayJobs.length === 0" class="text-center py-16 glass-dark rounded-xl border border-neural-700/50">
-      <div class="text-4xl mb-3">🔍</div>
-      <h3 class="text-lg font-semibold text-white mb-2">No jobs found</h3>
-      <p class="text-gray-500 text-sm">Search for jobs above or run the AI agent to discover opportunities.</p>
+    <!-- Filters Row -->
+    <div class="flex flex-wrap gap-2 mb-4 items-center">
+      <select v-model="filterStatus" class="px-2.5 py-1.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-[11px] focus:border-cyber-purple focus:outline-none">
+        <option value="">All Status</option>
+        <option value="new">New</option><option value="saved">Saved</option><option value="applied">Applied</option><option value="dismissed">Dismissed</option>
+      </select>
+      <select v-model="sortBy" class="px-2.5 py-1.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-[11px] focus:border-cyber-purple focus:outline-none">
+        <option value="created_at">Newest</option><option value="match_score">Best Match</option><option value="salary">Highest Salary</option>
+      </select>
+      <label class="flex items-center gap-1.5 cursor-pointer px-2.5 py-1.5 rounded-lg transition-colors" :class="filterWFH ? 'bg-green-500/15 text-green-400' : 'bg-neural-700/50 text-gray-500'">
+        <input type="checkbox" v-model="filterWFH" class="rounded border-neural-600 bg-neural-800 text-green-500 focus:ring-green-500 w-3 h-3" />
+        <span class="text-[11px] font-medium">WFH Only</span>
+      </label>
+      <div class="ml-auto flex items-center gap-2 text-[10px] text-gray-500">
+        <span>{{ filteredJobs.length }} jobs</span>
+        <span v-if="totalPages > 1">· Page {{ currentPage }}/{{ totalPages }}</span>
+      </div>
     </div>
 
+    <!-- Bulk Actions -->
+    <div v-if="selectedIds.size > 0" class="flex items-center gap-3 mb-3 px-3 py-2 bg-cyber-purple/10 border border-cyber-purple/20 rounded-lg">
+      <span class="text-xs text-cyber-purple font-medium">{{ selectedIds.size }} selected</span>
+      <button @click="scoreSelected" :disabled="scoring" class="px-2.5 py-1 bg-yellow-500/20 text-yellow-400 rounded text-[10px] font-medium hover:bg-yellow-500/30 disabled:opacity-50">{{ scoring ? `Scoring ${scoreProgress}` : '🎯 AI Score' }}</button>
+      <button @click="bulkDismiss" class="px-2.5 py-1 bg-red-500/20 text-red-400 rounded text-[10px] font-medium hover:bg-red-500/30">Dismiss</button>
+      <button @click="selectedIds.clear(); selectAll = false" class="text-[10px] text-gray-500 hover:text-white ml-auto">Clear</button>
+    </div>
+
+    <!-- Empty -->
+    <div v-if="filteredJobs.length === 0" class="text-center py-16 glass-dark rounded-xl border border-neural-700/50">
+      <div class="text-4xl mb-3">💼</div>
+      <h3 class="text-lg font-semibold text-white mb-2">{{ admin.jobListings.length === 0 ? 'No jobs yet' : 'No matches' }}</h3>
+      <p class="text-gray-500 text-sm">{{ admin.jobListings.length === 0 ? 'Search above to pull jobs from 8+ platforms.' : 'Try adjusting your filters.' }}</p>
+    </div>
+
+    <!-- Jobs Table -->
     <div v-else class="glass-dark rounded-xl overflow-hidden border border-neural-700/50">
       <table class="w-full text-sm">
         <thead class="bg-neural-700/40">
           <tr>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-8">#</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Job</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Location</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Salary</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Platform</th>
-            <th class="text-center px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Match</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Type</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Posted</th>
-            <th class="text-right px-4 py-3 text-gray-500 font-medium text-[10px] uppercase tracking-wider">Actions</th>
+            <th class="px-2 py-2.5 w-8"><input type="checkbox" :checked="selectAll" @change="toggleSelectAll" class="rounded border-neural-600 bg-neural-800 text-cyber-purple focus:ring-cyber-purple w-3 h-3" /></th>
+            <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Job</th>
+            <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Where</th>
+            <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Salary</th>
+            <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Source</th>
+            <th class="text-center px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Match</th>
+            <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Posted</th>
+            <th class="text-right px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(job, idx) in displayJobs" :key="job.id" class="border-t border-neural-700/30 hover:bg-neural-700/20 transition-colors">
-            <td class="px-4 py-3 text-gray-600 text-xs">{{ idx + 1 }}</td>
-            <td class="px-4 py-3">
-              <button @click="viewDetail(job)" class="text-left group">
-                <p class="text-white font-medium text-xs truncate max-w-[240px] group-hover:text-cyber-cyan transition-colors">{{ job.title }}</p>
-                <p class="text-[10px] text-gray-500">{{ job.company }}</p>
-              </button>
+          <tr v-for="job in paginatedJobs" :key="job.id"
+            class="border-t border-neural-700/30 hover:bg-neural-700/20 transition-colors cursor-pointer"
+            :class="selectedIds.has(job.id) ? 'bg-cyber-purple/5' : ''"
+            @click="viewDetail(job)">
+            <td class="px-2 py-2" @click.stop><input type="checkbox" :checked="selectedIds.has(job.id)" @change="toggleSelect(job.id)" class="rounded border-neural-600 bg-neural-800 text-cyber-purple focus:ring-cyber-purple w-3 h-3" /></td>
+            <td class="px-2 py-2">
+              <p class="text-white font-medium text-xs truncate max-w-[240px]">{{ job.title }}</p>
+              <p class="text-[10px] text-gray-500">{{ job.company }}</p>
             </td>
-            <td class="px-4 py-3 text-gray-400 text-xs max-w-[120px] truncate">{{ job.location || '—' }}</td>
-            <td class="px-4 py-3 text-xs whitespace-nowrap" :class="job.salary_min ? 'text-green-400' : 'text-gray-600'">{{ formatSalary(job) }}</td>
-            <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize" :class="platformColor(job.platform)">{{ job.platform }}</span></td>
-            <td class="px-4 py-3 text-center">
-              <span v-if="job.match_score" class="text-xs font-bold" :class="job.match_score >= 75 ? 'text-green-400' : job.match_score >= 50 ? 'text-yellow-400' : 'text-gray-500'">{{ job.match_score }}%</span>
-              <span v-else class="text-[10px] text-gray-600">—</span>
-            </td>
-            <td class="px-4 py-3 text-gray-500 text-[10px] capitalize">{{ job.job_type || '—' }}</td>
-            <td class="px-4 py-3 text-gray-500 text-[10px]">{{ job.posted_at ? timeAgo(job.posted_at) : timeAgo(job.created_at) }}</td>
-            <td class="px-4 py-3 text-right">
+            <td class="px-2 py-2 text-[10px] text-gray-400 max-w-[100px] truncate">{{ job.location || 'Remote' }}</td>
+            <td class="px-2 py-2 text-[10px] whitespace-nowrap" :class="job.salary_min ? 'text-green-400' : 'text-gray-600'">{{ formatSalary(job) }}</td>
+            <td class="px-2 py-2"><span class="px-1.5 py-0.5 rounded text-[9px] font-medium capitalize" :class="p(job.platform).bg + ' ' + p(job.platform).color">{{ p(job.platform).label }}</span></td>
+            <td class="px-2 py-2 text-center"><span class="text-xs font-bold" :class="matchColor(job.match_score)">{{ job.match_score ? job.match_score + '%' : '—' }}</span></td>
+            <td class="px-2 py-2 text-[10px] text-gray-500">{{ timeAgo(job.posted_at || job.created_at) }}</td>
+            <td class="px-2 py-2 text-right" @click.stop>
               <div class="flex items-center justify-end gap-0.5">
-                <button @click="viewDetail(job)" class="p-1.5 rounded-lg hover:bg-neural-600 text-gray-500 hover:text-white transition-colors" title="Details">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                </button>
-                <button v-if="!job.match_score" @click="scoreOneJob(job)" :disabled="scoringJobId === job.id"
-                  class="p-1.5 rounded-lg hover:bg-yellow-900/30 text-gray-500 hover:text-yellow-400 transition-colors" title="AI Score">
-                  <svg v-if="scoringJobId !== job.id" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                  <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                </button>
-                <button v-if="job.status === 'new'" @click="saveJob(job)" class="p-1.5 rounded-lg hover:bg-yellow-900/30 text-gray-500 hover:text-yellow-400 transition-colors" title="Save">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
-                </button>
-                <button v-if="!['applied','dismissed'].includes(job.status)" @click="applyToJob(job)" class="p-1.5 rounded-lg hover:bg-green-900/30 text-gray-500 hover:text-green-400 transition-colors" title="Apply">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                </button>
-                <button v-if="job.status === 'new'" @click="dismissJob(job)" class="p-1.5 rounded-lg hover:bg-red-900/30 text-gray-500 hover:text-red-400 transition-colors" title="Dismiss">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-                <button @click="deleteJob(job)" class="p-1.5 rounded-lg hover:bg-red-900/30 text-gray-500 hover:text-red-400 transition-colors" title="Delete">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                </button>
-                <a v-if="job.url" :href="job.url" target="_blank" class="p-1.5 rounded-lg hover:bg-neural-600 text-gray-500 hover:text-cyber-cyan transition-colors" title="Open">
+                <a v-if="job.url" :href="job.url" target="_blank" class="p-1 rounded hover:bg-neural-600 text-gray-500 hover:text-cyber-cyan transition-colors" title="Open">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                 </a>
+                <button @click="deleteJob(job)" class="p-1 rounded hover:bg-red-900/30 text-gray-500 hover:text-red-400 transition-colors" title="Remove">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
             </td>
           </tr>
@@ -358,37 +315,117 @@ function timeAgo(d: string) {
       </table>
     </div>
 
-    <!-- Detail Modal -->
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between mt-4">
+      <p class="text-[10px] text-gray-500">{{ (currentPage - 1) * perPage + 1 }}-{{ Math.min(currentPage * perPage, filteredJobs.length) }} of {{ filteredJobs.length }}</p>
+      <div class="flex items-center gap-1">
+        <button @click="currentPage--" :disabled="currentPage === 1" class="px-2.5 py-1 rounded text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30">&larr;</button>
+        <template v-for="pg in totalPages" :key="pg">
+          <button v-if="pg === 1 || pg === totalPages || Math.abs(pg - currentPage) <= 1" @click="currentPage = pg"
+            class="w-7 h-7 rounded text-[10px] font-medium" :class="pg === currentPage ? 'bg-cyber-purple/20 text-cyber-purple' : 'text-gray-500 hover:text-white'">{{ pg }}</button>
+          <span v-else-if="pg === currentPage - 2 || pg === currentPage + 2" class="text-gray-600 text-[10px]">...</span>
+        </template>
+        <button @click="currentPage++" :disabled="currentPage === totalPages" class="px-2.5 py-1 rounded text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30">&rarr;</button>
+      </div>
+    </div>
+
+    <!-- ═══ Detail Modal ═══ -->
     <Teleport to="body">
       <div v-if="showDetail && detailJob" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="showDetail = false">
-        <div class="glass-dark rounded-xl w-full max-w-2xl border border-neural-600 max-h-[85vh] flex flex-col">
-          <div class="flex items-center justify-between px-6 py-4 border-b border-neural-700 shrink-0">
-            <div class="min-w-0">
-              <h3 class="text-lg font-bold text-white truncate">{{ detailJob.title }}</h3>
-              <p class="text-sm text-gray-400">{{ detailJob.company }} · {{ detailJob.location || 'Remote' }}</p>
+        <div class="glass-dark rounded-xl w-full max-w-3xl border border-neural-600 max-h-[90vh] flex flex-col">
+          <!-- Header -->
+          <div class="px-6 py-4 border-b border-neural-700 shrink-0">
+            <div class="flex items-center justify-between">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-medium capitalize" :class="p(detailJob.platform).bg + ' ' + p(detailJob.platform).color">{{ p(detailJob.platform).label }}</span>
+                  <span v-if="detailJob.match_score" class="px-2 py-0.5 rounded-full text-xs font-bold" :class="detailJob.match_score >= 75 ? 'bg-green-500/20 text-green-400' : detailJob.match_score >= 50 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-500/20 text-gray-400'">{{ detailJob.match_score }}% match</span>
+                  <span v-if="detailJob.job_type" class="px-2 py-0.5 rounded text-[10px] bg-neural-700/50 text-gray-300 capitalize">{{ detailJob.job_type }}</span>
+                </div>
+                <h3 class="text-lg font-bold text-white">{{ detailJob.title }}</h3>
+                <p class="text-sm text-gray-400">{{ detailJob.company }} · {{ detailJob.location || 'Remote' }} · {{ timeAgo(detailJob.posted_at || detailJob.created_at) }}</p>
+              </div>
+              <button @click="showDetail = false" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-white shrink-0 ml-3"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <span v-if="detailJob.match_score" class="px-2 py-1 rounded-full text-xs font-bold" :class="detailJob.match_score >= 75 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'">{{ detailJob.match_score }}%</span>
-              <button @click="showDetail = false" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-white">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            <div class="flex gap-1 mt-3">
+              <button v-for="tab in [{key:'overview',label:'Overview'},{key:'description',label:'Job Details'},{key:'match',label:'Match Analysis'},{key:'coverletter',label:'Cover Letter'}]" :key="tab.key"
+                @click="detailTab = tab.key as any"
+                class="px-3 py-1.5 rounded-t-lg text-xs font-medium transition-colors"
+                :class="detailTab === tab.key ? 'bg-neural-800 text-white border-t border-x border-neural-600' : 'text-gray-500 hover:text-gray-300'">
+                {{ tab.label }}
               </button>
             </div>
           </div>
-          <div class="flex-1 overflow-y-auto p-6 space-y-4">
-            <div class="flex flex-wrap gap-2">
-              <span class="px-2 py-1 rounded-full text-xs capitalize" :class="platformColor(detailJob.platform)">{{ detailJob.platform }}</span>
-              <span v-if="detailJob.job_type" class="px-2 py-1 rounded-full text-xs bg-neural-700/50 text-gray-300 capitalize">{{ detailJob.job_type }}</span>
-              <span v-if="detailJob.salary_min || detailJob.salary_max" class="px-2 py-1 rounded-full text-xs bg-green-500/15 text-green-400">{{ formatSalary(detailJob) }}</span>
+
+          <!-- Tab Content -->
+          <div class="flex-1 overflow-y-auto p-6">
+            <!-- Overview -->
+            <div v-if="detailTab === 'overview'" class="space-y-4">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Salary</p><p class="text-sm font-medium" :class="detailJob.salary_min ? 'text-green-400' : 'text-gray-500'">{{ formatSalary(detailJob) }}</p></div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Type</p><p class="text-sm font-medium text-white capitalize">{{ detailJob.job_type || '—' }}</p></div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Role</p><p class="text-sm font-medium text-violet-400 capitalize">{{ rd(detailJob, 'role_type')?.replace('_', ' ') || 'Not classified' }}</p></div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Company Type</p><p class="text-sm font-medium text-cyan-400 capitalize">{{ rd(detailJob, 'company_bucket')?.replace('_', ' ') || 'Not classified' }}</p></div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Posted</p><p class="text-sm font-medium text-white">{{ detailJob.posted_at ? new Date(detailJob.posted_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—' }}</p></div>
+                <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Source</p><p class="text-sm font-medium capitalize" :class="p(detailJob.platform).color">{{ p(detailJob.platform).label }}</p></div>
+              </div>
+              <div class="flex gap-3 pt-3 border-t border-neural-700">
+                <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 flex items-center gap-1.5">
+                  View on {{ p(detailJob.platform).label }} <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                </a>
+              </div>
             </div>
-            <div v-if="detailJob.description" class="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{{ detailJob.description }}</div>
-            <div v-if="detailJob.requirements" class="mt-4">
-              <h4 class="text-sm font-semibold text-white mb-2">Requirements</h4>
-              <div class="text-sm text-gray-400 leading-relaxed whitespace-pre-wrap">{{ detailJob.requirements }}</div>
+
+            <!-- Job Details -->
+            <div v-if="detailTab === 'description'" class="space-y-4">
+              <div v-if="detailJob.description" class="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-y-auto">{{ detailJob.description }}</div>
+              <div v-else class="text-center py-8 text-gray-500 text-sm">No description pulled. <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="text-cyber-cyan hover:underline">View on {{ p(detailJob.platform).label }}</a></div>
+              <div v-if="detailJob.requirements" class="pt-4 border-t border-neural-700">
+                <h4 class="text-sm font-semibold text-white mb-2">Requirements</h4>
+                <div class="text-sm text-gray-400 leading-relaxed whitespace-pre-wrap">{{ detailJob.requirements }}</div>
+              </div>
             </div>
-            <div class="flex gap-3 pt-4 border-t border-neural-700">
-              <button v-if="!['applied','dismissed'].includes(detailJob.status)" @click="applyToJob(detailJob); showDetail = false"
-                class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90">Mark Applied</button>
-              <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="px-4 py-2 bg-neural-700 text-gray-300 rounded-lg text-sm hover:bg-neural-600">Open Original &rarr;</a>
+
+            <!-- Match Analysis -->
+            <div v-if="detailTab === 'match'" class="space-y-4">
+              <div v-if="detailJob.match_score" class="text-center py-4">
+                <div class="text-5xl font-bold mb-1" :class="matchColor(detailJob.match_score)">{{ detailJob.match_score }}%</div>
+                <p class="text-sm text-gray-400 capitalize">{{ rd(detailJob, 'recommendation')?.replace('_', ' ') || 'Match Score' }}</p>
+              </div>
+              <div v-else class="text-center py-6">
+                <p class="text-gray-500 text-sm mb-3">Not scored yet — AI is analyzing...</p>
+              </div>
+              <div v-if="(detailJob.raw_data as any)?.skill_matches?.length" class="bg-neural-800/50 rounded-lg p-4 border border-green-500/20">
+                <h4 class="text-xs text-green-400 font-semibold mb-2 uppercase">What You Can Provide</h4>
+                <div class="flex flex-wrap gap-1.5">
+                  <span v-for="s in (detailJob.raw_data as any).skill_matches" :key="s" class="px-2.5 py-1 rounded-full text-xs bg-green-500/10 text-green-400 border border-green-500/20">{{ s }}</span>
+                </div>
+              </div>
+              <div v-if="(detailJob.raw_data as any)?.skill_gaps?.length" class="bg-neural-800/50 rounded-lg p-4 border border-red-500/20">
+                <h4 class="text-xs text-red-400 font-semibold mb-2 uppercase">Skills to Develop</h4>
+                <div class="flex flex-wrap gap-1.5">
+                  <span v-for="s in (detailJob.raw_data as any).skill_gaps" :key="s" class="px-2.5 py-1 rounded-full text-xs bg-red-500/10 text-red-400 border border-red-500/20">{{ s }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Cover Letter -->
+            <div v-if="detailTab === 'coverletter'">
+              <div v-if="generatingCover" class="text-center py-8">
+                <svg class="w-6 h-6 animate-spin mx-auto mb-3 text-cyber-purple" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <p class="text-sm text-gray-400">Generating tailored cover letter...</p>
+              </div>
+              <div v-else-if="coverLetter">
+                <div class="flex items-center justify-between mb-3">
+                  <h4 class="text-sm font-semibold text-white">Tailored Cover Letter</h4>
+                  <div class="flex gap-2">
+                    <button @click="copyText(coverLetter)" class="px-3 py-1 bg-neural-700 text-gray-300 rounded text-[10px] hover:bg-neural-600">Copy</button>
+                    <button @click="coverLetter = ''; autoGenCoverLetter(detailJob!)" class="px-3 py-1 bg-neural-700 text-gray-300 rounded text-[10px] hover:bg-neural-600">Regenerate</button>
+                  </div>
+                </div>
+                <div class="bg-neural-800/50 rounded-lg p-5 border border-neural-700/30 text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{{ coverLetter }}</div>
+              </div>
+              <div v-else class="text-center py-8 text-gray-500 text-sm">Cover letter generation requires AI (GPT/Gemini). Check your API keys.</div>
             </div>
           </div>
         </div>
