@@ -11,6 +11,7 @@ const sidebarLinks = [
   { name: 'admin-jobs-applications', label: 'Applications', icon: '📋' },
   { name: 'admin-jobs-profile', label: 'Profile', icon: '👤' },
   { name: 'admin-jobs-agent', label: 'AI Agent', icon: '🤖' },
+  { name: 'admin-jobs-api', label: 'API Usage', icon: '📡' },
 ]
 </script>
 

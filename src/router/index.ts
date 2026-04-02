@@ -166,6 +166,11 @@ const router = createRouter({
           name: 'admin-jobs-agent',
           component: () => import('@/views/admin/JobAgent.vue')
         },
+        {
+          path: 'api-usage',
+          name: 'admin-jobs-api',
+          component: () => import('@/views/admin/JobApiUsage.vue')
+        },
       ]
     },
   ]

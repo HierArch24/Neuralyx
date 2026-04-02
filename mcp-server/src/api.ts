@@ -1244,6 +1244,21 @@ const server = createServer(async (req, res) => {
     return handleNurture(req, res)
   }
 
+  // FAISS semantic matching (proxy to AI service)
+  if (url.pathname.startsWith('/api/semantic/') && req.method === 'POST') {
+    try {
+      const body = await readBody(req)
+      const aiRes = await fetch(`${AI_SERVICE_URL}${url.pathname.replace('/api', '')}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+        signal: AbortSignal.timeout(120000),
+      })
+      const data = await aiRes.json()
+      return json(res, aiRes.status, data)
+    } catch (e: unknown) {
+      return json(res, 500, { error: `FAISS service unavailable: ${e instanceof Error ? e.message : e}` })
+    }
+  }
+
   // 5 parallel detail-fill agents — processes jobs in batches
   if (url.pathname === '/api/jobs/fill-details' && req.method === 'POST') {
     return handleFillDetails(req, res)
