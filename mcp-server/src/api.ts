@@ -840,6 +840,7 @@ My resume: ${(resume_text || '').slice(0, 1000)}`
 // ─── Research Agent: Company Intelligence ───
 
 const SEARXNG_URL = process.env.SEARXNG_URL || 'http://neuralyx-searxng:8080'
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://neuralyx-ai:8090'
 
 async function searchSearXNG(query: string): Promise<{ title: string; url: string; content: string }[]> {
   try {
@@ -900,6 +901,22 @@ async function handleResearchCompany(req: IncomingMessage, res: ServerResponse) 
       return json(res, 200, { company, sources: allResults.slice(0, 5), ai_summary: null })
     }
   }
+
+  // Try NotebookLM deep research via AI service
+  try {
+    const nlmRes = await fetch(`${AI_SERVICE_URL}/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company, title, sources: allResults.slice(0, 3).map((r: { url: string }) => r.url) }),
+      signal: AbortSignal.timeout(30000),
+    })
+    if (nlmRes.ok) {
+      const nlmData = await nlmRes.json()
+      if (nlmData.summary) {
+        return json(res, 200, { company, sources: allResults.slice(0, 5), ai_summary: nlmData.summary, notebook_id: nlmData.notebook_id })
+      }
+    }
+  } catch { /* NotebookLM not available */ }
 
   json(res, 200, { company, sources: allResults.slice(0, 5), ai_summary: null })
 }
@@ -1137,6 +1154,23 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/jobs/nurture' && req.method === 'POST') {
     return handleNurture(req, res)
+  }
+
+  // Parallel orchestration via AI service (AgentScope)
+  if (url.pathname === '/api/jobs/orchestrate' && req.method === 'POST') {
+    try {
+      const body = await readBody(req)
+      const aiRes = await fetch(`${AI_SERVICE_URL}/orchestrate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(120000),
+      })
+      const data = await aiRes.json()
+      return json(res, aiRes.status, data)
+    } catch (e: unknown) {
+      return json(res, 500, { error: `AI service unavailable: ${e instanceof Error ? e.message : e}` })
+    }
   }
 
   // Serve uploaded images

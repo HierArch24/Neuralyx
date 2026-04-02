@@ -50,6 +50,19 @@ services:
     depends_on:
       - postgres
 
+  ai-service:
+    container_name: neuralyx-ai
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ai-service
+    ports:
+      - "8090:8090"
+    environment:
+      - MCP_SERVER_URL=http://neuralyx-mcp:8080
+    depends_on:
+      - mcp-server
+    restart: unless-stopped
+
   searxng:
     container_name: neuralyx-searxng
     image: searxng/searxng:latest
