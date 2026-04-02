@@ -52,6 +52,37 @@ const connections = ref<Connection[]>([
   // Git & Deployment
   { id: 24, name: 'GitHub (HierArch24)', type: 'Git Remote', category: 'deployment', status: 'configured', detail: 'SSH: git@github.com-hierarch24:HierArch24/NEURALYX.git', endpoint: 'github.com' },
   { id: 25, name: 'CLI-Anything', type: 'CLI Tool', category: 'ai-agent', status: 'configured', detail: 'HKUDS/CLI-Anything - Agent-native CLI', endpoint: '~/.claude/tools/cli-anything' },
+
+  // Job Pipeline AI Agents
+  { id: 26, name: 'Scout Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Job discovery across 11 platforms (JSearch, Adzuna, JobSpy, Playwright)', endpoint: '/api/jobs/agent/run' },
+  { id: 27, name: 'Classifier Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Detects role type (FullStack/AI/ML/DevOps/Freelance) + company bucket', endpoint: '/api/jobs/classify' },
+  { id: 28, name: 'Matcher Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Hybrid scoring: 50% semantic + 30% keyword + 20% structured (pgvector)', endpoint: '/api/jobs/match' },
+  { id: 29, name: 'Research Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Company intel: website, Glassdoor reviews, tech stack, red flags', endpoint: '/api/jobs/research' },
+  { id: 30, name: 'Writer Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'RAG cover letter gen using portfolio signals + past successful applications', endpoint: '/api/jobs/cover-letter' },
+  { id: 31, name: 'Applier Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Auto-submit via LinkedIn MCP, Playwright form-fill, Easy Apply', endpoint: '/api/jobs/apply' },
+  { id: 32, name: 'Nurture Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Follow-up tracking, ghosted detection (30d), status monitoring', endpoint: '/api/jobs/nurture' },
+
+  // Job Pipeline MCP Servers
+  { id: 33, name: 'JobSpy MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: 'Multi-platform scraper: Indeed, LinkedIn, Glassdoor, ZipRecruiter, Google', endpoint: 'jobspy-mcp-server' },
+  { id: 34, name: 'Indeed MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: 'Official Indeed integration: search, details, resume, company data', endpoint: 'indeed-mcp-api.Indeed.com/sse' },
+  { id: 35, name: 'LinkedIn MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: '12 tools: jobs, profiles, inbox, messages, connect, apply', endpoint: 'linkedin-scraper-mcp' },
+  { id: 36, name: 'Adzuna MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: '7 tools: search, salary, categories, companies, geo (12+ countries)', endpoint: 'adzuna-mcp' },
+  { id: 37, name: 'Apify JobStreet MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: 'JobStreet/SEEK scraping across Asia-Pacific', endpoint: '@apify/actors-mcp-server' },
+  { id: 38, name: 'Supabase MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Database management, migrations, SQL execution', endpoint: 'mcp__claude_ai_Supabase__*' },
+
+  // Additional Tech Stack
+  { id: 39, name: 'OTPAuth', type: 'Security', category: 'tech-stack', status: 'active', detail: 'TOTP 2FA (Google Authenticator) for Credentials Vault', endpoint: 'otpauth + qrcode' },
+  { id: 40, name: 'OpenAI GPT-5.2', type: 'AI Model', category: 'ai-agent', status: 'limited', detail: 'Article generation, classification, matching, cover letters (Excis key)', endpoint: 'api.openai.com' },
+  { id: 41, name: 'Google Gemini 2.0', type: 'AI Model', category: 'ai-agent', status: 'configured', detail: 'Fallback when OpenAI quota exceeded (Vertex key)', endpoint: 'generativelanguage.googleapis.com' },
+  { id: 42, name: 'microlink.io', type: 'Screenshot API', category: 'backend', status: 'active', detail: 'URL screenshots for news article thumbnails (free, no auth)', endpoint: 'api.microlink.io' },
+  { id: 43, name: 'DALL-E 3', type: 'Image Generation', category: 'ai-agent', status: 'limited', detail: 'AI thumbnail generation for news articles (OpenAI key required)', endpoint: 'api.openai.com/v1/images' },
+  { id: 44, name: 'pgvector', type: 'Vector Database', category: 'backend', status: 'configured', detail: 'Semantic search: resume-job matching, deduplication, RAG retrieval', endpoint: 'Supabase extension' },
+  { id: 45, name: 'JSearch API', type: 'Job Aggregator', category: 'backend', status: 'configured', detail: 'RapidAPI: Indeed+LinkedIn+Glassdoor+ZipRecruiter+Google Jobs (500K req/mo)', endpoint: 'jsearch.p.rapidapi.com' },
+  { id: 46, name: 'Playwright', type: 'Browser Automation', category: 'backend', status: 'configured', detail: 'Auto-apply for OnlineJobs.ph, Bossjob, Kalibrr, Facebook Jobs', endpoint: 'playwright chromium' },
+
+  // Deployment
+  { id: 47, name: 'cPanel (Live)', type: 'Hosting', category: 'deployment', status: 'active', detail: 'neuralyx.ai.dev-environment.site via rsync deploy', endpoint: 'sv70.ifastnet.com:2083' },
+  { id: 48, name: 'GitHub Actions CI/CD', type: 'Pipeline', category: 'deployment', status: 'active', detail: 'Auto build + deploy on push to main', endpoint: '.github/workflows/build.yml' },
 ])
 
 const categories = [
