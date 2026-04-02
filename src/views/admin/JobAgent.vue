@@ -10,6 +10,38 @@ const agentStatus = ref('')
 const searchQuery = ref('AI engineer')
 const searchLocation = ref('')
 const minScore = ref(80)
+const schedule = ref('6h') // Default: every 6 hours
+const autoRunEnabled = ref(false)
+const lastRun = ref<string | null>(null)
+const nextRun = ref<string | null>(null)
+let autoRunTimer: ReturnType<typeof setInterval> | null = null
+
+const SCHEDULES = [
+  { value: '1h', label: 'Every 1 hour', ms: 3600000 },
+  { value: '3h', label: 'Every 3 hours', ms: 10800000 },
+  { value: '6h', label: 'Every 6 hours (recommended)', ms: 21600000 },
+  { value: '12h', label: 'Every 12 hours', ms: 43200000 },
+  { value: '24h', label: 'Every 24 hours', ms: 86400000 },
+]
+
+function startAutoRun() {
+  if (autoRunTimer) clearInterval(autoRunTimer)
+  const sched = SCHEDULES.find(s => s.value === schedule.value)
+  if (!sched || !autoRunEnabled.value) return
+  const updateNext = () => { nextRun.value = new Date(Date.now() + sched.ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) }
+  updateNext()
+  autoRunTimer = setInterval(() => {
+    runAgent()
+    lastRun.value = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    updateNext()
+  }, sched.ms)
+}
+
+function toggleAutoRun() {
+  autoRunEnabled.value = !autoRunEnabled.value
+  if (autoRunEnabled.value) startAutoRun()
+  else { if (autoRunTimer) clearInterval(autoRunTimer); autoRunTimer = null; nextRun.value = null }
+}
 
 const PLATFORMS = [
   { id: 'himalayas', name: 'Himalayas', enabled: true, icon: '⛰️' },
@@ -127,6 +159,41 @@ function stepIcon(step: string) {
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold text-white">AI Agent Control</h2>
       <div class="text-xs text-gray-500">7 agents: Scout → Classifier → Matcher → Research → Writer → Applier → Nurture</div>
+    </div>
+
+    <!-- Schedule Config -->
+    <div class="glass-dark rounded-xl p-4 border border-neural-700/50 mb-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Auto-Run Schedule</h3>
+        <button @click="toggleAutoRun"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+          :class="autoRunEnabled ? 'bg-green-500/20 text-green-400' : 'bg-neural-700 text-gray-400 hover:text-white'">
+          <span class="w-2 h-2 rounded-full" :class="autoRunEnabled ? 'bg-green-400 animate-pulse' : 'bg-gray-600'" />
+          {{ autoRunEnabled ? 'Running' : 'Disabled' }}
+        </button>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-[10px] text-gray-500 mb-1">Pull New Jobs</label>
+          <select v-model="schedule" @change="() => { if (autoRunEnabled) startAutoRun() }" class="w-full px-2.5 py-1.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-[11px] focus:border-cyber-purple focus:outline-none">
+            <option v-for="s in SCHEDULES" :key="s.value" :value="s.value">{{ s.label }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] text-gray-500 mb-1">Last Run</label>
+          <p class="text-xs text-white py-1.5">{{ lastRun || 'Never' }}</p>
+        </div>
+        <div>
+          <label class="block text-[10px] text-gray-500 mb-1">Next Run</label>
+          <p class="text-xs py-1.5" :class="autoRunEnabled ? 'text-green-400' : 'text-gray-600'">{{ nextRun || 'Not scheduled' }}</p>
+        </div>
+      </div>
+      <div class="mt-3 p-2 bg-neural-800/50 rounded-lg">
+        <p class="text-[9px] text-gray-500 leading-relaxed">
+          <strong class="text-gray-400">Pipeline cycle:</strong> Pull jobs → FAISS score → AI classify (80%+ only) → Cover letter gen → Save to DB.
+          <strong class="text-gray-400">Recommended:</strong> Every 6 hours catches 95% of new postings while staying within free API limits.
+        </p>
+      </div>
     </div>
 
     <!-- Agent Search Config -->

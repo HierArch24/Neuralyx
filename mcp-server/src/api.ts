@@ -1174,26 +1174,41 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
   const errors: string[] = []
   const sources: string[] = []
 
-  const searchQuery = query || 'software engineer'
+  // Search across multiple domain keywords for maximum coverage
+  const domainQueries = query ? [query] : [
+    'AI automation engineer',
+    'full stack developer Vue',
+    'marketing automation',
+    'DevOps MLOps engineer',
+    'AI chatbot developer',
+    'system integration engineer',
+    'Python AI developer',
+    'data analytics engineer',
+    'business automation',
+  ]
 
-  // Run all sources
-  try {
-    const [him, rok, rem, arb, hn, li] = await Promise.allSettled([
-      searchHimalayas(searchQuery),
-      searchRemoteOK(searchQuery),
-      searchRemotive(searchQuery),
-      searchArbeitnow(searchQuery),
-      searchHackerNews(searchQuery),
-      searchLinkedInPublic(searchQuery, location || ''),
-    ])
-    for (const r of [him, rok, rem, arb, hn, li]) {
-      if (r.status === 'fulfilled' && r.value.length) allJobs.push(...r.value)
-    }
-    if (JSEARCH_API_KEY) {
-      const js = await searchJSearch(searchQuery, location || '')
-      allJobs.push(...js)
-    }
-  } catch (e) { errors.push(String(e)) }
+  const searchLoc = location || ''
+
+  // Run all sources for EACH domain query
+  for (const sq of domainQueries) {
+    try {
+      const [him, rok, rem, arb, hn, li] = await Promise.allSettled([
+        searchHimalayas(sq),
+        searchRemoteOK(sq),
+        searchRemotive(sq),
+        searchArbeitnow(sq),
+        searchHackerNews(sq),
+        searchLinkedInPublic(sq, searchLoc),
+      ])
+      for (const r of [him, rok, rem, arb, hn, li]) {
+        if (r.status === 'fulfilled' && r.value.length) allJobs.push(...r.value)
+      }
+      if (JSEARCH_API_KEY) {
+        const js = await searchJSearch(sq, searchLoc)
+        allJobs.push(...js)
+      }
+    } catch (e) { errors.push(String(e)) }
+  }
 
   // Deduplicate
   const seen = new Set<string>()
@@ -1209,11 +1224,11 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
   let matched = 0
   if ((OPENAI_KEY || GEMINI_KEY) && allJobs.length > 0) {
     const matchStart = Date.now()
-    const classifyPrompt = 'Classify job. Return JSON: {"role_type":"fullstack|ai_engineer|ml_engineer|devops|frontend|backend|other","company_bucket":"agency|startup|enterprise|recruiter|direct_client","match_score":0-100}. Score based on: AI Systems Engineer, 8 years experience, Vue.js, TypeScript, Python, Docker, OpenAI, Supabase, n8n.'
+    const classifyPrompt = 'Classify job. Return JSON: {"role_type":"fullstack|ai_engineer|ml_engineer|devops|frontend|backend|data|marketing|other","company_bucket":"agency|startup|enterprise|recruiter|direct_client","company_type_detail":"outsourcing|product|consulting|staffing|saas|other","match_score":0-100,"work_arrangement":"remote|hybrid|onsite"}. Domains: AI automation, marketing automation, business automation, fullstack (Vue/Python/Node), DevOps/MLOps, AI/ML, chatbot, system integration, data analytics. Skills: Vue.js, TypeScript, Python, Docker, OpenAI, Supabase, n8n, LangChain, CrewAI, FastAPI, MCP. Score 80+=strong, 60-79=good, below 40=skip. Exclude .NET, SAP, receptionist, data entry.'
 
-    // Process top 30 jobs max to avoid timeout
+    // Process top 50 jobs to cover more results
     const minRequired = min_score || 60
-    const toProcess = allJobs.slice(0, 30)
+    const toProcess = allJobs.slice(0, 50)
     let discarded = 0
     for (const job of toProcess) {
       try {
