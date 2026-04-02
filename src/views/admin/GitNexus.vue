@@ -1,15 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 
-// Detect environment
-const isDev = import.meta.env.DEV
-const isLocalhost = computed(() => {
-  const h = window.location.hostname
-  return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.')
-})
-// iframe only works reliably on localhost Docker (same-origin self-hosted build)
-const useIframe = computed(() => isLocalhost.value)
-const iframeUrl = ref(isDev ? 'https://gitnexus.vercel.app' : '/gitnexus/index.html')
+// Always use Vercel-hosted GitNexus via iframe
+const useIframe = computed(() => true)
+const iframeUrl = ref('https://gitnexus.vercel.app')
 const isLoading = ref(true)
 const showConfig = ref(false)
 
