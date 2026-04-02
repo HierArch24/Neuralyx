@@ -265,7 +265,7 @@ async function handleProxyImage(req: IncomingMessage, res: ServerResponse) {
 
 interface NormalizedJob {
   platform: string
-  external_id: string
+  external_id: string | null
   title: string
   company: string
   location: string | null
@@ -319,6 +319,104 @@ async function searchJSearch(query: string, location: string, page: number = 1):
   }
 }
 
+async function searchHimalayas(query: string): Promise<NormalizedJob[]> {
+  try {
+    const params = new URLSearchParams({ limit: '20' })
+    const res = await fetch(`https://himalayas.app/jobs/api?${params}`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.jobs || [])
+      .filter((j: any) => {
+        const text = `${j.title} ${j.companyName} ${j.description || ''}`.toLowerCase()
+        return query.split(' ').some((w: string) => text.includes(w.toLowerCase()))
+      })
+      .map((j: any) => ({
+        platform: 'himalayas',
+        external_id: j.id ? String(j.id) : null,
+        title: j.title || 'Untitled',
+        company: j.companyName || 'Unknown',
+        location: j.location || 'Remote',
+        salary_min: j.minSalary || null,
+        salary_max: j.maxSalary || null,
+        salary_currency: 'USD',
+        job_type: j.employmentType?.toLowerCase() || 'remote',
+        description: (j.description || '').slice(0, 5000) || null,
+        requirements: null,
+        url: j.applicationUrl || `https://himalayas.app/jobs/${j.id}`,
+        posted_at: j.publishedDate || null,
+        status: 'new',
+      }))
+  } catch (e) {
+    console.error('[Scout] Himalayas error:', e)
+    return []
+  }
+}
+
+async function searchRemoteOK(query: string): Promise<NormalizedJob[]> {
+  try {
+    const res = await fetch('https://remoteok.com/api', {
+      headers: { 'User-Agent': 'NEURALYX-JobAgent/1.0' },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    // First item is metadata, skip it
+    const jobs = Array.isArray(data) ? data.filter((j: any) => j.id && j.position) : []
+    return jobs
+      .filter((j: any) => {
+        const text = `${j.position} ${j.company} ${j.description || ''} ${(j.tags || []).join(' ')}`.toLowerCase()
+        return query.split(' ').some((w: string) => text.includes(w.toLowerCase()))
+      })
+      .slice(0, 20)
+      .map((j: any) => ({
+        platform: 'remoteok',
+        external_id: j.id ? String(j.id) : null,
+        title: j.position || 'Untitled',
+        company: j.company || 'Unknown',
+        location: j.location || 'Remote',
+        salary_min: j.salary_min ? Number(j.salary_min) : null,
+        salary_max: j.salary_max ? Number(j.salary_max) : null,
+        salary_currency: 'USD',
+        job_type: 'remote',
+        description: (j.description || '').slice(0, 5000) || null,
+        requirements: (j.tags || []).join(', ') || null,
+        url: j.url || `https://remoteok.com/remote-jobs/${j.id}`,
+        posted_at: j.date || null,
+        status: 'new',
+      }))
+  } catch (e) {
+    console.error('[Scout] RemoteOK error:', e)
+    return []
+  }
+}
+
+async function searchRemotive(query: string): Promise<NormalizedJob[]> {
+  try {
+    const params = new URLSearchParams({ search: query, limit: '20' })
+    const res = await fetch(`https://remotive.com/api/remote-jobs?${params}`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.jobs || []).map((j: any) => ({
+      platform: 'remotive',
+      external_id: j.id ? String(j.id) : null,
+      title: j.title || 'Untitled',
+      company: j.company_name || 'Unknown',
+      location: j.candidate_required_location || 'Remote',
+      salary_min: null,
+      salary_max: null,
+      salary_currency: 'USD',
+      job_type: j.job_type?.toLowerCase() || 'remote',
+      description: (j.description || '').slice(0, 5000) || null,
+      requirements: null,
+      url: j.url || '',
+      posted_at: j.publication_date || null,
+      status: 'new',
+    }))
+  } catch (e) {
+    console.error('[Scout] Remotive error:', e)
+    return []
+  }
+}
+
 async function searchAdzuna(query: string, location: string): Promise<NormalizedJob[]> {
   const appId = process.env.ADZUNA_APP_ID || ''
   const appKey = process.env.ADZUNA_APP_KEY || ''
@@ -363,20 +461,54 @@ async function handleJobSearch(req: IncomingMessage, res: ServerResponse) {
 
   const results: NormalizedJob[] = []
   const errors: string[] = []
+  const sources: string[] = []
 
-  // Search JSearch (covers Indeed, LinkedIn, Glassdoor, ZipRecruiter, Google)
-  if (!platform || ['indeed', 'linkedin', 'glassdoor', 'ziprecruiter', 'google'].includes(platform)) {
+  // ─── Free APIs (no auth required) ───
+
+  // Himalayas (remote jobs, no auth)
+  if (!platform || platform === 'himalayas') {
     try {
-      const jsearchResults = await searchJSearch(query, location || '')
-      results.push(...jsearchResults)
+      const jobs = await searchHimalayas(query)
+      results.push(...jobs)
+      if (jobs.length) sources.push(`Himalayas: ${jobs.length}`)
+    } catch { errors.push('Himalayas failed') }
+  }
+
+  // RemoteOK (remote jobs, no auth)
+  if (!platform || platform === 'remoteok') {
+    try {
+      const jobs = await searchRemoteOK(query)
+      results.push(...jobs)
+      if (jobs.length) sources.push(`RemoteOK: ${jobs.length}`)
+    } catch { errors.push('RemoteOK failed') }
+  }
+
+  // Remotive (remote jobs, no auth)
+  if (!platform || platform === 'remotive') {
+    try {
+      const jobs = await searchRemotive(query)
+      results.push(...jobs)
+      if (jobs.length) sources.push(`Remotive: ${jobs.length}`)
+    } catch { errors.push('Remotive failed') }
+  }
+
+  // ─── API Key APIs (optional, enhances results) ───
+
+  // JSearch (covers Indeed, LinkedIn, Glassdoor, ZipRecruiter, Google)
+  if (JSEARCH_API_KEY && (!platform || ['indeed', 'linkedin', 'glassdoor', 'ziprecruiter', 'google'].includes(platform))) {
+    try {
+      const jobs = await searchJSearch(query, location || '')
+      results.push(...jobs)
+      if (jobs.length) sources.push(`JSearch: ${jobs.length}`)
     } catch { errors.push('JSearch failed') }
   }
 
-  // Search Adzuna (EU/UK coverage)
-  if (!platform || platform === 'adzuna') {
+  // Adzuna (EU/UK coverage)
+  if (process.env.ADZUNA_APP_ID && (!platform || platform === 'adzuna')) {
     try {
-      const adzunaResults = await searchAdzuna(query, location || '')
-      results.push(...adzunaResults)
+      const jobs = await searchAdzuna(query, location || '')
+      results.push(...jobs)
+      if (jobs.length) sources.push(`Adzuna: ${jobs.length}`)
     } catch { errors.push('Adzuna failed') }
   }
 
@@ -389,7 +521,7 @@ async function handleJobSearch(req: IncomingMessage, res: ServerResponse) {
     return true
   })
 
-  json(res, 200, { jobs: deduped, total: deduped.length, errors })
+  json(res, 200, { jobs: deduped, total: deduped.length, sources, errors })
 }
 
 const server = createServer(async (req, res) => {

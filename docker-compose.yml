@@ -47,6 +47,18 @@ services:
     depends_on:
       - postgres
 
+  searxng:
+    container_name: neuralyx-searxng
+    image: searxng/searxng:latest
+    ports:
+      - "8888:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888
+    volumes:
+      - searxng_data:/etc/searxng
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   uploads_data:
+  searxng_data:

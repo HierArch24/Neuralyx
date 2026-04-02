@@ -58,28 +58,71 @@ export async function searchJobs(
     }
   } catch { /* MCP not available */ }
 
-  // Fallback: direct JSearch API from browser
-  onStatus?.('Searching JSearch API directly...')
+  // Fallback: call free APIs directly from browser (no auth needed)
+  const allJobs: SearchResult[] = []
+  const errors: string[] = []
+
+  // RemoteOK (free, no auth, CORS-friendly)
+  onStatus?.('Searching RemoteOK...')
+  try {
+    const res = await fetch('https://remoteok.com/api', { signal: AbortSignal.timeout(10000) })
+    if (res.ok) {
+      const data = await res.json()
+      const jobs = (Array.isArray(data) ? data.filter((j: Record<string, unknown>) => j.id && j.position) : [])
+        .filter((j: Record<string, unknown>) => {
+          const text = `${j.position} ${j.company} ${(j.tags as string[] || []).join(' ')}`.toLowerCase()
+          return query.split(' ').some(w => text.includes(w.toLowerCase()))
+        })
+        .slice(0, 20)
+        .map((j: Record<string, unknown>): SearchResult => ({
+          platform: 'remoteok', external_id: j.id ? String(j.id) : null,
+          title: (j.position as string) || 'Untitled', company: (j.company as string) || 'Unknown',
+          location: (j.location as string) || 'Remote',
+          salary_min: j.salary_min ? Number(j.salary_min) : null,
+          salary_max: j.salary_max ? Number(j.salary_max) : null,
+          salary_currency: 'USD', job_type: 'remote',
+          description: ((j.description as string) || '').slice(0, 5000) || null, requirements: null,
+          url: (j.url as string) || '', posted_at: (j.date as string) || null, status: 'new',
+        }))
+      allJobs.push(...jobs)
+    }
+  } catch { errors.push('RemoteOK unavailable') }
+
+  // Remotive (free, no auth)
+  onStatus?.('Searching Remotive...')
+  try {
+    const res = await fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=20`, { signal: AbortSignal.timeout(10000) })
+    if (res.ok) {
+      const data = await res.json()
+      const jobs = (data.jobs || []).map((j: Record<string, unknown>): SearchResult => ({
+        platform: 'remotive', external_id: j.id ? String(j.id) : null,
+        title: (j.title as string) || 'Untitled', company: (j.company_name as string) || 'Unknown',
+        location: (j.candidate_required_location as string) || 'Remote',
+        salary_min: null, salary_max: null, salary_currency: 'USD',
+        job_type: ((j.job_type as string) || 'remote').toLowerCase(),
+        description: ((j.description as string) || '').slice(0, 5000) || null, requirements: null,
+        url: (j.url as string) || '', posted_at: (j.publication_date as string) || null, status: 'new',
+      }))
+      allJobs.push(...jobs)
+    }
+  } catch { errors.push('Remotive unavailable') }
+
+  // JSearch (if key available)
   const jsearchKey = import.meta.env.VITE_JSEARCH_KEY || ''
   if (jsearchKey) {
+    onStatus?.('Searching JSearch...')
     try {
       const jobs = await searchJSearchDirect(query, location || '', jsearchKey, platform)
-      onStatus?.(`Found ${jobs.length} jobs from JSearch`)
-      return { jobs, errors: [] }
-    } catch (e) {
-      return { jobs: [], errors: [`JSearch: ${e instanceof Error ? e.message : 'failed'}`] }
-    }
+      allJobs.push(...jobs)
+    } catch { errors.push('JSearch failed') }
   }
 
-  // No API keys — show instructions
-  return {
-    jobs: [],
-    errors: [
-      'No job search API configured.',
-      'Option 1: Run MCP server locally (docker compose up -d)',
-      'Option 2: Add JSEARCH_API_KEY to .env (get free key at rapidapi.com → JSearch)',
-    ],
+  if (allJobs.length > 0) {
+    onStatus?.(`Found ${allJobs.length} jobs`)
+    return { jobs: allJobs, errors }
   }
+
+  return { jobs: [], errors: errors.length ? errors : ['No results found. Try different keywords.'] }
 }
 
 /**
