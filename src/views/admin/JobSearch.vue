@@ -27,9 +27,12 @@ const perPage = 20
 // Detail modal
 const showDetail = ref(false)
 const detailJob = ref<JobListing | null>(null)
-const detailTab = ref<'overview' | 'description' | 'match' | 'coverletter'>('overview')
+const detailTab = ref<'overview' | 'description' | 'match' | 'coverletter' | 'apply'>('overview')
 const coverLetter = ref('')
 const generatingCover = ref(false)
+const researching = ref(false)
+const companyResearch = ref<Record<string, unknown> | null>(null)
+const draftEmail = ref('')
 
 // Bulk
 const selectedIds = ref<Set<string>>(new Set())
@@ -149,10 +152,47 @@ function toggleSelectAll() {
 }
 
 // ─── Detail Modal ───
+// Apply method detection
+function applyMethod(job: JobListing): { method: string; color: string; icon: string; needsRegistration: boolean } {
+  const url = (job.url || '').toLowerCase()
+  const plat = job.platform.toLowerCase()
+  if (url.includes('linkedin.com')) return { method: 'LinkedIn Apply', color: 'text-sky-400', icon: '🟦', needsRegistration: true }
+  if (url.includes('indeed.com') || plat === 'indeed') return { method: 'Indeed Apply', color: 'text-blue-400', icon: '🔵', needsRegistration: true }
+  if (url.includes('glassdoor.com')) return { method: 'Glassdoor Apply', color: 'text-green-400', icon: '🟢', needsRegistration: true }
+  if (url.includes('ziprecruiter.com')) return { method: 'ZipRecruiter Apply', color: 'text-emerald-400', icon: '🟩', needsRegistration: true }
+  if (plat === 'hackernews') return { method: 'Email / HN Post', color: 'text-orange-400', icon: '📧', needsRegistration: false }
+  if (url.includes('mailto:')) return { method: 'Direct Email', color: 'text-cyan-400', icon: '📧', needsRegistration: false }
+  if (url.includes('careers') || url.includes('jobs') || url.includes('apply')) return { method: 'Company Career Page', color: 'text-purple-400', icon: '🏢', needsRegistration: false }
+  return { method: 'External Site', color: 'text-gray-400', icon: '🌐', needsRegistration: false }
+}
+
+// Research company
+async function researchCompany(job: JobListing) {
+  researching.value = true; companyResearch.value = null
+  const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+  try {
+    const res = await fetch(`${mcpUrl}/api/jobs/research`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company: job.company, title: job.title }),
+      signal: AbortSignal.timeout(30000),
+    })
+    if (res.ok) companyResearch.value = await res.json()
+  } catch { /* research unavailable */ }
+  researching.value = false
+}
+
+// Draft application email
+async function draftApplicationEmail(job: JobListing) {
+  if (coverLetter.value) {
+    draftEmail.value = `Subject: Application for ${job.title} — Gabriel Alvin Aquino\n\nDear ${job.company} Hiring Team,\n\n${coverLetter.value}\n\nBest regards,\nGabriel Alvin Aquino\nAI Systems Engineer\nhttps://neuralyx.ai.dev-environment.site`
+  }
+}
+
 function viewDetail(job: JobListing) {
-  detailJob.value = job; detailTab.value = 'overview'; coverLetter.value = ''; showDetail.value = true
-  // Auto-generate cover letter in background
+  detailJob.value = job; detailTab.value = 'overview'; coverLetter.value = ''; companyResearch.value = null; draftEmail.value = ''
+  showDetail.value = true
   autoGenCoverLetter(job)
+  researchCompany(job) // Auto-research in background
 }
 
 async function autoGenCoverLetter(job: JobListing) {
@@ -348,7 +388,7 @@ function matchColor(score: number | null) {
               <button @click="showDetail = false" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-white shrink-0 ml-3"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div class="flex gap-1 mt-3">
-              <button v-for="tab in [{key:'overview',label:'Overview'},{key:'description',label:'Job Details'},{key:'match',label:'Match Analysis'},{key:'coverletter',label:'Cover Letter'}]" :key="tab.key"
+              <button v-for="tab in [{key:'overview',label:'Overview'},{key:'description',label:'Job Details'},{key:'match',label:'Match Analysis'},{key:'coverletter',label:'Cover Letter'},{key:'apply',label:'How to Apply'}]" :key="tab.key"
                 @click="detailTab = tab.key as any"
                 class="px-3 py-1.5 rounded-t-lg text-xs font-medium transition-colors"
                 :class="detailTab === tab.key ? 'bg-neural-800 text-white border-t border-x border-neural-600' : 'text-gray-500 hover:text-gray-300'">
@@ -369,10 +409,33 @@ function matchColor(score: number | null) {
                 <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Posted</p><p class="text-sm font-medium text-white">{{ detailJob.posted_at ? new Date(detailJob.posted_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—' }}</p></div>
                 <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30"><p class="text-[10px] text-gray-500 uppercase mb-1">Source</p><p class="text-sm font-medium capitalize" :class="p(detailJob.platform).color">{{ p(detailJob.platform).label }}</p></div>
               </div>
+              <!-- Apply Method Banner -->
+              <div class="p-3 rounded-lg border" :class="applyMethod(detailJob).needsRegistration ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-green-500/10 border-green-500/20'">
+                <div class="flex items-center gap-2">
+                  <span>{{ applyMethod(detailJob).icon }}</span>
+                  <span class="text-sm font-medium" :class="applyMethod(detailJob).color">{{ applyMethod(detailJob).method }}</span>
+                  <span v-if="applyMethod(detailJob).needsRegistration" class="px-2 py-0.5 rounded text-[10px] bg-yellow-500/20 text-yellow-400">Account Required</span>
+                  <span v-else class="px-2 py-0.5 rounded text-[10px] bg-green-500/20 text-green-400">Direct Apply</span>
+                </div>
+                <p class="text-[10px] text-gray-500 mt-1">{{ applyMethod(detailJob).needsRegistration ? 'You need to register/login on this platform before applying' : 'You can apply directly on the company website or via email' }}</p>
+              </div>
+              <!-- Company Research (auto-loaded) -->
+              <div v-if="companyResearch && (companyResearch as any).ai_summary" class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                <p class="text-[10px] text-gray-500 uppercase mb-1">Company Intel</p>
+                <p class="text-xs text-gray-300">{{ (companyResearch as any).ai_summary?.summary || 'Researching...' }}</p>
+                <div v-if="(companyResearch as any).ai_summary?.tech_stack?.length" class="flex flex-wrap gap-1 mt-2">
+                  <span v-for="t in (companyResearch as any).ai_summary.tech_stack" :key="t" class="px-1.5 py-0.5 rounded text-[9px] bg-neural-700/50 text-gray-400">{{ t }}</span>
+                </div>
+              </div>
+              <div v-else-if="researching" class="text-[10px] text-gray-500 flex items-center gap-1.5">
+                <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Researching company...
+              </div>
               <div class="flex gap-3 pt-3 border-t border-neural-700">
                 <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 flex items-center gap-1.5">
                   View on {{ p(detailJob.platform).label }} <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                 </a>
+                <button @click="detailTab = 'apply'" class="px-4 py-2 bg-neural-700 text-gray-300 rounded-lg text-sm hover:bg-neural-600">How to Apply</button>
               </div>
             </div>
 
@@ -427,6 +490,58 @@ function matchColor(score: number | null) {
               </div>
               <div v-else class="text-center py-8 text-gray-500 text-sm">Cover letter generation requires AI (GPT/Gemini). Check your API keys.</div>
             </div>
+
+            <!-- How to Apply Tab -->
+            <div v-if="detailTab === 'apply'" class="space-y-4">
+              <div class="p-4 rounded-lg border" :class="applyMethod(detailJob).needsRegistration ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-green-500/10 border-green-500/20'">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-2xl">{{ applyMethod(detailJob).icon }}</span>
+                  <div>
+                    <p class="text-sm font-medium" :class="applyMethod(detailJob).color">{{ applyMethod(detailJob).method }}</p>
+                    <p class="text-[10px] text-gray-500">{{ applyMethod(detailJob).needsRegistration ? 'Platform account required — register first' : 'No registration needed — apply directly' }}</p>
+                  </div>
+                </div>
+              </div>
+              <!-- Steps -->
+              <div class="bg-neural-800/50 rounded-lg p-4 border border-neural-700/30">
+                <h4 class="text-xs text-white font-semibold mb-3 uppercase tracking-wider">Steps to Apply</h4>
+                <div class="space-y-2.5">
+                  <div class="flex items-start gap-3"><span class="w-5 h-5 rounded-full bg-cyber-purple/20 text-cyber-purple text-[10px] font-bold flex items-center justify-center shrink-0">1</span><p class="text-xs text-gray-300">Review match analysis + job details</p></div>
+                  <div class="flex items-start gap-3"><span class="w-5 h-5 rounded-full bg-cyber-purple/20 text-cyber-purple text-[10px] font-bold flex items-center justify-center shrink-0">2</span><p class="text-xs text-gray-300">{{ applyMethod(detailJob).needsRegistration ? 'Login/register at ' + applyMethod(detailJob).method.split(' ')[0] : 'Copy your tailored cover letter from the Cover Letter tab' }}</p></div>
+                  <div class="flex items-start gap-3"><span class="w-5 h-5 rounded-full bg-cyber-purple/20 text-cyber-purple text-[10px] font-bold flex items-center justify-center shrink-0">3</span><p class="text-xs text-gray-300">{{ applyMethod(detailJob).needsRegistration ? 'Apply through the platform' : 'Apply on company site or send email with cover letter' }}</p></div>
+                  <div class="flex items-start gap-3"><span class="w-5 h-5 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold flex items-center justify-center shrink-0">4</span><p class="text-xs text-gray-300">Update status in Applications tracker</p></div>
+                </div>
+              </div>
+              <!-- Company Research -->
+              <div v-if="companyResearch && (companyResearch as any).ai_summary" class="bg-neural-800/50 rounded-lg p-4 border border-neural-700/30">
+                <h4 class="text-xs text-white font-semibold mb-2 uppercase tracking-wider">Company Research</h4>
+                <p class="text-xs text-gray-300 mb-2">{{ (companyResearch as any).ai_summary?.summary }}</p>
+                <div v-if="(companyResearch as any).ai_summary?.tech_stack?.length" class="flex flex-wrap gap-1 mb-2">
+                  <span v-for="t in (companyResearch as any).ai_summary.tech_stack" :key="t" class="px-1.5 py-0.5 rounded text-[9px] bg-neural-700/50 text-gray-400">{{ t }}</span>
+                </div>
+                <p v-if="(companyResearch as any).ai_summary?.glassdoor_sentiment" class="text-[10px]">
+                  Glassdoor: <span :class="(companyResearch as any).ai_summary.glassdoor_sentiment === 'positive' ? 'text-green-400' : 'text-yellow-400'">{{ (companyResearch as any).ai_summary.glassdoor_sentiment }}</span>
+                </p>
+              </div>
+              <div v-else-if="researching" class="text-[10px] text-gray-500 flex items-center gap-1.5"><svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Researching {{ detailJob.company }}...</div>
+              <!-- Draft Email -->
+              <div class="bg-neural-800/50 rounded-lg p-4 border border-neural-700/30">
+                <div class="flex items-center justify-between mb-2">
+                  <h4 class="text-xs text-white font-semibold uppercase tracking-wider">Application Email</h4>
+                  <button v-if="!draftEmail && coverLetter" @click="draftApplicationEmail(detailJob)" class="px-3 py-1 bg-neural-700 text-gray-300 rounded text-[10px] hover:bg-neural-600">Generate</button>
+                  <button v-if="draftEmail" @click="copyText(draftEmail)" class="px-3 py-1 bg-green-500/20 text-green-400 rounded text-[10px] hover:bg-green-500/30">Copy Email</button>
+                </div>
+                <div v-if="draftEmail" class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap bg-neural-900 rounded p-3 max-h-[200px] overflow-y-auto font-mono">{{ draftEmail }}</div>
+                <p v-else class="text-[10px] text-gray-500">{{ generatingCover ? 'Generating cover letter...' : coverLetter ? 'Click Generate to create application email' : 'Waiting for cover letter...' }}</p>
+              </div>
+              <!-- Action Buttons -->
+              <div class="flex gap-3 pt-3 border-t border-neural-700">
+                <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-sm font-medium hover:opacity-90 flex items-center gap-1.5">
+                  Open Application Page <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                </a>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
