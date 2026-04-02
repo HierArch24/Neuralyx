@@ -904,6 +904,109 @@ async function handleResearchCompany(req: IncomingMessage, res: ServerResponse) 
   json(res, 200, { company, sources: allResults.slice(0, 5), ai_summary: null })
 }
 
+// ─── Nurture Agent: Follow-up Tracking + Ghosted Detection ───
+
+async function handleNurture(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { applications } = body  // Array of {id, status, created_at, follow_up_at, job_title, company}
+  if (!applications || !Array.isArray(applications)) return json(res, 400, { error: 'applications array is required' })
+
+  const now = Date.now()
+  const DAY = 86400000
+  const actions: { id: string; action: string; reason: string; suggested_status?: string; follow_up_date?: string }[] = []
+
+  for (const app of applications) {
+    const appliedAt = new Date(app.created_at).getTime()
+    const daysSinceApplied = Math.floor((now - appliedAt) / DAY)
+    const followUpAt = app.follow_up_at ? new Date(app.follow_up_at).getTime() : null
+    const status = app.status || 'applied'
+
+    // Ghosted detection: applied 30+ days, no status change
+    if (['applied', 'under_review'].includes(status) && daysSinceApplied >= 30) {
+      actions.push({
+        id: app.id, action: 'mark_ghosted',
+        reason: `No response in ${daysSinceApplied} days since applying to ${app.job_title} at ${app.company}`,
+        suggested_status: 'ghosted',
+      })
+      continue
+    }
+
+    // Follow-up reminder: applied 7+ days, no follow-up set
+    if (status === 'applied' && daysSinceApplied >= 7 && !followUpAt) {
+      const followDate = new Date(now + 2 * DAY).toISOString().split('T')[0]
+      actions.push({
+        id: app.id, action: 'suggest_followup',
+        reason: `${daysSinceApplied} days since applying to ${app.job_title} at ${app.company}. Consider following up.`,
+        follow_up_date: followDate,
+      })
+      continue
+    }
+
+    // Follow-up overdue: follow_up_at has passed
+    if (followUpAt && followUpAt < now && !['ghosted', 'withdrawn', 'position_filled', 'offer_accepted', 'offer_declined', 'onboarded'].includes(status)) {
+      actions.push({
+        id: app.id, action: 'followup_overdue',
+        reason: `Follow-up was due ${Math.floor((now - followUpAt) / DAY)} days ago for ${app.job_title} at ${app.company}`,
+      })
+      continue
+    }
+
+    // Interview approaching: interview scheduled within 3 days
+    if (status === 'interview_scheduled' && app.interview_dates) {
+      try {
+        const dates = typeof app.interview_dates === 'string' ? JSON.parse(app.interview_dates) : app.interview_dates
+        for (const d of (Array.isArray(dates) ? dates : [])) {
+          if (d.date) {
+            const interviewDate = new Date(d.date).getTime()
+            const daysUntil = Math.floor((interviewDate - now) / DAY)
+            if (daysUntil >= 0 && daysUntil <= 3) {
+              actions.push({
+                id: app.id, action: 'interview_reminder',
+                reason: `Interview for ${app.job_title} at ${app.company} in ${daysUntil === 0 ? 'TODAY' : daysUntil + ' days'}`,
+              })
+            }
+          }
+        }
+      } catch { /* skip parse errors */ }
+    }
+
+    // Stale screening: under_review for 14+ days
+    if (status === 'under_review' && daysSinceApplied >= 14) {
+      actions.push({
+        id: app.id, action: 'suggest_followup',
+        reason: `Under review for ${daysSinceApplied} days at ${app.company}. Follow up or check status.`,
+        follow_up_date: new Date(now + DAY).toISOString().split('T')[0],
+      })
+    }
+
+    // Offer pending: offer_received for 5+ days without action
+    if (status === 'offer_received' && daysSinceApplied >= 5) {
+      actions.push({
+        id: app.id, action: 'offer_expiring',
+        reason: `Offer from ${app.company} has been pending ${daysSinceApplied} days. Respond soon.`,
+      })
+    }
+  }
+
+  // Generate AI follow-up suggestions if available
+  if (actions.length > 0 && actions.some(a => a.action === 'suggest_followup') && (OPENAI_KEY || GEMINI_KEY)) {
+    const followups = actions.filter(a => a.action === 'suggest_followup').slice(0, 3)
+    for (const fu of followups) {
+      try {
+        const app = applications.find((a: any) => a.id === fu.id)
+        if (!app) continue
+        const msg = await callAI(
+          'Generate a short, professional follow-up message (2-3 sentences) for a job application. Be polite and direct.',
+          `I applied for ${app.job_title} at ${app.company} ${Math.floor((now - new Date(app.created_at).getTime()) / DAY)} days ago. Generate a follow-up message.`,
+        )
+        ;(fu as any).suggested_message = msg
+      } catch { /* skip */ }
+    }
+  }
+
+  json(res, 200, { actions, total: actions.length, checked: applications.length })
+}
+
 // ─── Full Agent Runner: Orchestrates Scout → Classify → Match pipeline ───
 
 async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
@@ -1030,6 +1133,10 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/jobs/agent/run' && req.method === 'POST') {
     return handleAgentRun(req, res)
+  }
+
+  if (url.pathname === '/api/jobs/nurture' && req.method === 'POST') {
+    return handleNurture(req, res)
   }
 
   // Serve uploaded images
