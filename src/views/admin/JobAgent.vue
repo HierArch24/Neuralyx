@@ -22,6 +22,11 @@ const SCHEDULES = [
   { value: '6h', label: 'Every 6 hours (recommended)', ms: 21600000 },
   { value: '12h', label: 'Every 12 hours', ms: 43200000 },
   { value: '24h', label: 'Every 24 hours', ms: 86400000 },
+  { value: '3d', label: 'Every 3 days', ms: 259200000 },
+  { value: '1w', label: 'Every week', ms: 604800000 },
+  { value: '2w', label: 'Every 2 weeks', ms: 1209600000 },
+  { value: '3w', label: 'Every 3 weeks', ms: 1814400000 },
+  { value: '1m', label: 'Every month', ms: 2592000000 },
 ]
 
 function startAutoRun() {
@@ -44,19 +49,32 @@ function toggleAutoRun() {
 }
 
 const PLATFORMS = [
-  { id: 'himalayas', name: 'Himalayas', enabled: true, icon: '⛰️' },
-  { id: 'remoteok', name: 'RemoteOK', enabled: true, icon: '🌍' },
-  { id: 'remotive', name: 'Remotive', enabled: true, icon: '🏠' },
-  { id: 'arbeitnow', name: 'Arbeitnow', enabled: true, icon: '🇪🇺' },
-  { id: 'hackernews', name: 'HN/YC Jobs', enabled: true, icon: '🟧' },
-  { id: 'linkedin', name: 'LinkedIn', enabled: true, icon: '🟦' },
-  { id: 'indeed', name: 'Indeed (JSearch)', enabled: true, icon: '🔵' },
-  { id: 'glassdoor', name: 'Glassdoor (JSearch)', enabled: true, icon: '🟢' },
-  { id: 'jobstreet', name: 'JobStreet', enabled: false, icon: '🟣' },
-  { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠' },
-  { id: 'bossjob', name: 'Bossjob', enabled: false, icon: '🟡' },
-  { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷' },
-  { id: 'facebook', name: 'Facebook Jobs', enabled: false, icon: '🔵' },
+  // Active - Free APIs (no auth)
+  { id: 'himalayas', name: 'Himalayas', enabled: true, icon: '⛰️', group: 'Free APIs' },
+  { id: 'remoteok', name: 'RemoteOK', enabled: true, icon: '🌍', group: 'Free APIs' },
+  { id: 'remotive', name: 'Remotive', enabled: true, icon: '🏠', group: 'Free APIs' },
+  { id: 'arbeitnow', name: 'Arbeitnow', enabled: true, icon: '🇪🇺', group: 'Free APIs' },
+  { id: 'hackernews', name: 'HN/YC Jobs', enabled: true, icon: '🟧', group: 'Free APIs' },
+  // Active - API Key (JSearch)
+  { id: 'indeed', name: 'Indeed', enabled: true, icon: '🔵', group: 'JSearch API' },
+  { id: 'linkedin', name: 'LinkedIn', enabled: true, icon: '🟦', group: 'JSearch API' },
+  { id: 'glassdoor', name: 'Glassdoor', enabled: true, icon: '🟢', group: 'JSearch API' },
+  { id: 'google', name: 'Google Jobs', enabled: true, icon: '🔴', group: 'JSearch API' },
+  // Philippines-Specific (need Playwright - Phase 2)
+  { id: 'jobstreet', name: 'JobStreet PH', enabled: false, icon: '🟣', group: 'PH Sites' },
+  { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷', group: 'PH Sites' },
+  { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠', group: 'PH Sites' },
+  { id: 'bossjob', name: 'Bossjob', enabled: false, icon: '🟡', group: 'PH Sites' },
+  { id: 'virtualstaff', name: 'VirtualStaff.ph', enabled: false, icon: '👤', group: 'PH Sites' },
+  { id: 'philjobnet', name: 'PhilJobNet (Gov)', enabled: false, icon: '🇵🇭', group: 'PH Sites' },
+  { id: 'mynimo', name: 'Mynimo', enabled: false, icon: '📍', group: 'PH Sites' },
+  { id: 'bruntwork', name: 'BruntWork', enabled: false, icon: '💼', group: 'PH Sites' },
+  // Freelance (need account)
+  { id: 'upwork', name: 'Upwork', enabled: false, icon: '🟩', group: 'Freelance' },
+  { id: 'toptal', name: 'Toptal', enabled: false, icon: '💎', group: 'Freelance' },
+  { id: 'freelancer', name: 'Freelancer.com', enabled: false, icon: '🏷️', group: 'Freelance' },
+  // Other
+  { id: 'facebook', name: 'Facebook Jobs', enabled: false, icon: '📘', group: 'Other' },
 ]
 
 const platformToggles = ref(
