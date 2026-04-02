@@ -8,6 +8,7 @@ const sidebarOpen = ref(true)
 const sidebarLinks = [
   { name: 'admin-jobs', label: 'Dashboard', icon: '📊' },
   { name: 'admin-jobs-search', label: 'Search Jobs', icon: '🔍' },
+  { name: 'admin-jobs-posts', label: 'Job Posts', icon: '📌' },
   { name: 'admin-jobs-applications', label: 'Applications', icon: '📋' },
   { name: 'admin-jobs-profile', label: 'Profile', icon: '👤' },
   { name: 'admin-jobs-agent', label: 'AI Agent', icon: '🤖' },

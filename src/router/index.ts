@@ -147,6 +147,11 @@ const router = createRouter({
           component: () => import('@/views/admin/JobSearch.vue')
         },
         {
+          path: 'posts',
+          name: 'admin-jobs-posts',
+          component: () => import('@/views/admin/JobPosts.vue')
+        },
+        {
           path: 'applications',
           name: 'admin-jobs-applications',
           component: () => import('@/views/admin/JobApplications.vue')
