@@ -96,11 +96,22 @@ const categories = [
 ]
 
 const selectedCategory = ref<string>('all')
+const searchQuery = ref('')
+const currentPage = ref(1)
+const perPage = 15
 
 const filteredConnections = computed(() => {
-  if (selectedCategory.value === 'all') return connections.value
-  return connections.value.filter(c => c.category === selectedCategory.value)
+  let filtered = connections.value
+  if (selectedCategory.value !== 'all') filtered = filtered.filter(c => c.category === selectedCategory.value)
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    filtered = filtered.filter(c => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q) || c.detail.toLowerCase().includes(q))
+  }
+  return filtered
 })
+
+const totalPages = computed(() => Math.ceil(filteredConnections.value.length / perPage))
+const paginatedConnections = computed(() => filteredConnections.value.slice((currentPage.value - 1) * perPage, currentPage.value * perPage))
 
 const statusCounts = computed(() => {
   const counts: Record<string, number> = { active: 0, configured: 0, limited: 0, error: 0, offline: 0 }
@@ -174,6 +185,12 @@ function categoryLabel(cat: string) {
       </div>
     </div>
 
+    <!-- Search -->
+    <div class="relative mb-4">
+      <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+      <input v-model="searchQuery" @input="currentPage = 1" placeholder="Search connections..." class="w-full pl-10 pr-4 py-2.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
+    </div>
+
     <!-- Category Filter -->
     <div class="flex flex-wrap gap-2 mb-6">
       <button
@@ -210,7 +227,7 @@ function categoryLabel(cat: string) {
           </thead>
           <tbody>
             <tr
-              v-for="conn in filteredConnections"
+              v-for="conn in paginatedConnections"
               :key="conn.id"
               class="border-b border-neural-700/50 hover:bg-neural-700/30 transition-colors"
             >
@@ -238,7 +255,7 @@ function categoryLabel(cat: string) {
     <!-- CARD VIEW -->
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <div
-        v-for="conn in filteredConnections"
+        v-for="conn in paginatedConnections"
         :key="conn.id"
         class="bg-neural-800 rounded-xl p-5 border border-neural-600 hover:border-neural-500 transition-all"
       >
@@ -257,6 +274,16 @@ function categoryLabel(cat: string) {
           <span class="text-xs px-2 py-0.5 bg-neural-700 text-gray-300 rounded">{{ categoryLabel(conn.category) }}</span>
         </div>
         <p class="text-[10px] text-gray-600 mt-2 font-mono">{{ conn.endpoint }}</p>
+      </div>
+    </div>
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex items-center justify-between mt-4">
+      <p class="text-[10px] text-gray-500">{{ (currentPage - 1) * perPage + 1 }}-{{ Math.min(currentPage * perPage, filteredConnections.length) }} of {{ filteredConnections.length }}</p>
+      <div class="flex items-center gap-1">
+        <button @click="currentPage--" :disabled="currentPage === 1" class="px-2.5 py-1 rounded text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30">&larr;</button>
+        <button v-for="pg in totalPages" :key="pg" @click="currentPage = pg"
+          class="w-7 h-7 rounded text-[10px] font-medium" :class="pg === currentPage ? 'bg-cyber-purple/20 text-cyber-purple' : 'text-gray-500 hover:text-white'">{{ pg }}</button>
+        <button @click="currentPage++" :disabled="currentPage === totalPages" class="px-2.5 py-1 rounded text-xs bg-neural-700 text-gray-400 hover:text-white disabled:opacity-30">&rarr;</button>
       </div>
     </div>
   </div>
