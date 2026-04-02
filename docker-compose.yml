@@ -44,6 +44,7 @@ services:
       - ADZUNA_APP_KEY=${ADZUNA_APP_KEY:-}
       - OPENAI_KEY=${VITE_OPENAI_KEY:-}
       - GEMINI_KEY=${VITE_GEMINI_KEY:-}
+      - SEARXNG_URL=http://neuralyx-searxng:8080
     volumes:
       - uploads_data:/app/uploads
     depends_on:

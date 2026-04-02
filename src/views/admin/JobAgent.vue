@@ -7,17 +7,22 @@ const admin = useAdminStore()
 const agentRunning = ref(false)
 const agentStatus = ref('')
 
+const searchQuery = ref('AI engineer')
+const searchLocation = ref('')
+
 const PLATFORMS = [
-  { id: 'indeed', name: 'Indeed', enabled: true, icon: '🔵' },
+  { id: 'himalayas', name: 'Himalayas', enabled: true, icon: '⛰️' },
+  { id: 'remoteok', name: 'RemoteOK', enabled: true, icon: '🌍' },
+  { id: 'remotive', name: 'Remotive', enabled: true, icon: '🏠' },
+  { id: 'arbeitnow', name: 'Arbeitnow', enabled: true, icon: '🇪🇺' },
+  { id: 'hackernews', name: 'HN/YC Jobs', enabled: true, icon: '🟧' },
   { id: 'linkedin', name: 'LinkedIn', enabled: true, icon: '🟦' },
-  { id: 'glassdoor', name: 'Glassdoor', enabled: true, icon: '🟢' },
-  { id: 'ziprecruiter', name: 'ZipRecruiter', enabled: true, icon: '🟩' },
-  { id: 'google', name: 'Google Jobs', enabled: true, icon: '🔴' },
+  { id: 'indeed', name: 'Indeed (JSearch)', enabled: true, icon: '🔵' },
+  { id: 'glassdoor', name: 'Glassdoor (JSearch)', enabled: true, icon: '🟢' },
   { id: 'jobstreet', name: 'JobStreet', enabled: false, icon: '🟣' },
   { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠' },
   { id: 'bossjob', name: 'Bossjob', enabled: false, icon: '🟡' },
   { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷' },
-  { id: 'bestjobs', name: 'BestJobs.eu', enabled: false, icon: '🩷' },
   { id: 'facebook', name: 'Facebook Jobs', enabled: false, icon: '🔵' },
 ]
 
@@ -42,27 +47,59 @@ const groupedLogs = computed(() => {
 
 async function runAgent() {
   agentRunning.value = true
-  agentStatus.value = 'Starting agent pipeline...'
+  agentStatus.value = 'Starting agent pipeline: Search → Classify → Match...'
   const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+
+  // Get profile for matching
+  await admin.fetchJobProfile()
+  const profile = admin.jobProfile[0] || null
+
   try {
     const res = await fetch(`${mcpUrl}/api/jobs/agent/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        query: searchQuery.value,
+        location: searchLocation.value,
         platforms: Object.entries(platformToggles.value).filter(([, v]) => v).map(([k]) => k),
+        min_score: 50,
+        resume_text: profile?.resume_text || '',
+        skills: profile?.skills || [],
+        preferred_job_types: profile?.preferred_job_types || [],
+        preferred_locations: profile?.preferred_locations || [],
       }),
+      signal: AbortSignal.timeout(120000),
     })
+
     if (res.ok) {
-      agentStatus.value = 'Agent completed successfully.'
+      const data = await res.json()
+      agentStatus.value = `Found ${data.total} jobs, ${data.matched} matched. Saving to database...`
+
+      // Save jobs to Supabase
+      let saved = 0
+      for (const job of data.jobs || []) {
+        try {
+          await admin.insertRow('job_listings', job as unknown as Record<string, unknown>)
+          saved++
+        } catch { /* duplicate */ }
+      }
+
+      // Save agent logs to Supabase
+      for (const log of data.logs || []) {
+        try {
+          await admin.insertRow('job_agent_logs', { ...log, run_id: data.run_id } as unknown as Record<string, unknown>)
+        } catch { /* skip */ }
+      }
+
+      agentStatus.value = `Agent completed: ${data.total} found, ${data.matched} matched, ${saved} new jobs saved.`
     } else {
-      agentStatus.value = 'Agent run failed. Check MCP server logs.'
+      agentStatus.value = 'Agent run failed. Check MCP server.'
     }
-  } catch {
-    agentStatus.value = 'Could not reach agent API. Ensure MCP server is running.'
+  } catch (e) {
+    agentStatus.value = `Error: ${e instanceof Error ? e.message : 'Could not reach agent API'}`
   } finally {
     agentRunning.value = false
-    await admin.fetchJobAgentLogs()
-    await admin.fetchJobListings()
+    await Promise.all([admin.fetchJobAgentLogs(), admin.fetchJobListings()])
   }
 }
 
@@ -88,12 +125,29 @@ function stepIcon(step: string) {
   <div>
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold text-white">AI Agent Control</h2>
-      <button @click="runAgent" :disabled="agentRunning"
-        class="px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
-        <svg v-if="!agentRunning" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-        {{ agentRunning ? 'Running...' : 'Run Agent Now' }}
-      </button>
+      <div class="text-xs text-gray-500">7 agents: Scout → Classifier → Matcher → Research → Writer → Applier → Nurture</div>
+    </div>
+
+    <!-- Agent Search Config -->
+    <div class="glass-dark rounded-xl p-4 border border-neural-700/50 mb-6">
+      <div class="flex gap-3 items-end">
+        <div class="flex-1">
+          <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Search Query</label>
+          <input v-model="searchQuery" placeholder="AI Engineer, Vue Developer..."
+            class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
+        </div>
+        <div class="w-44">
+          <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Location</label>
+          <input v-model="searchLocation" placeholder="Philippines, Remote..."
+            class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
+        </div>
+        <button @click="runAgent" :disabled="agentRunning"
+          class="px-5 py-2 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2 shrink-0">
+          <svg v-if="!agentRunning" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          {{ agentRunning ? 'Running...' : 'Run Full Pipeline' }}
+        </button>
+      </div>
     </div>
 
     <!-- Agent Status -->

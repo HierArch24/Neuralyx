@@ -277,6 +277,7 @@ interface NormalizedJob {
   requirements: string | null
   url: string
   posted_at: string | null
+  match_score: number | null
   status: string
 }
 
@@ -344,6 +345,7 @@ async function searchHimalayas(query: string): Promise<NormalizedJob[]> {
         requirements: null,
         url: j.applicationUrl || `https://himalayas.app/jobs/${j.id}`,
         posted_at: j.publishedDate || null,
+        match_score: null,
         status: 'new',
       }))
   } catch (e) {
@@ -381,6 +383,7 @@ async function searchRemoteOK(query: string): Promise<NormalizedJob[]> {
         requirements: (j.tags || []).join(', ') || null,
         url: j.url || `https://remoteok.com/remote-jobs/${j.id}`,
         posted_at: j.date || null,
+        match_score: null,
         status: 'new',
       }))
   } catch (e) {
@@ -440,6 +443,7 @@ async function searchArbeitnow(query: string): Promise<NormalizedJob[]> {
         requirements: (j.tags || []).join(', ') || null,
         url: j.url || '',
         posted_at: j.created_at ? new Date(j.created_at * 1000).toISOString() : null,
+        match_score: null,
         status: 'new',
       }))
   } catch (e) {
@@ -482,6 +486,7 @@ async function searchHackerNews(query: string): Promise<NormalizedJob[]> {
         requirements: null,
         url: s.url || `https://news.ycombinator.com/item?id=${s.id}`,
         posted_at: s.time ? new Date(s.time * 1000).toISOString() : null,
+        match_score: null,
         status: 'new',
       })
     }
@@ -522,6 +527,7 @@ async function searchLinkedInPublic(query: string, location: string): Promise<No
         description: null, requirements: null,
         url: match[2].split('?')[0],
         posted_at: null,
+        match_score: null,
         status: 'new',
       })
     }
@@ -831,6 +837,152 @@ My resume: ${(resume_text || '').slice(0, 1000)}`
   }
 }
 
+// ─── Research Agent: Company Intelligence ───
+
+const SEARXNG_URL = process.env.SEARXNG_URL || 'http://neuralyx-searxng:8080'
+
+async function searchSearXNG(query: string): Promise<{ title: string; url: string; content: string }[]> {
+  try {
+    const params = new URLSearchParams({ q: query, format: 'json', engines: 'google,bing,duckduckgo', categories: 'general' })
+    const res = await fetch(`${SEARXNG_URL}/search?${params}`, { signal: AbortSignal.timeout(10000) })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.results || []).slice(0, 10).map((r: any) => ({
+      title: r.title || '', url: r.url || '', content: (r.content || '').slice(0, 500),
+    }))
+  } catch {
+    return []
+  }
+}
+
+async function handleResearchCompany(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { company, title } = body
+  if (!company) return json(res, 400, { error: 'company is required' })
+
+  const queries = [
+    `${company} tech stack engineering team`,
+    `${company} glassdoor reviews culture`,
+    `${company} funding layoffs news 2026`,
+  ]
+
+  const allResults: { title: string; url: string; content: string }[] = []
+  for (const q of queries) {
+    const results = await searchSearXNG(q)
+    allResults.push(...results)
+  }
+
+  // If SearXNG returned nothing, try a basic web summary via AI
+  if (allResults.length === 0 && (OPENAI_KEY || GEMINI_KEY)) {
+    try {
+      const summary = await callAI(
+        'You research companies. Return JSON: {"summary":"2-3 sentence overview","tech_stack":["tech1"],"size":"startup|mid|enterprise","red_flags":[],"glassdoor_sentiment":"positive|mixed|negative|unknown"}',
+        `Research this company: ${company}. The job title is: ${title || 'unknown'}. Use your knowledge to provide what you know.`,
+      )
+      const parsed = JSON.parse(summary.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '').match(/\{[\s\S]*\}/)?.[0] || '{}')
+      return json(res, 200, { company, sources: [], ai_summary: parsed })
+    } catch {
+      return json(res, 200, { company, sources: [], ai_summary: null })
+    }
+  }
+
+  // Synthesize results with AI
+  if (allResults.length > 0 && (OPENAI_KEY || GEMINI_KEY)) {
+    try {
+      const context = allResults.map(r => `[${r.title}](${r.url}): ${r.content}`).join('\n')
+      const summary = await callAI(
+        'Analyze search results about a company. Return JSON: {"summary":"2-3 sentence overview","tech_stack":["tech1"],"size":"startup|mid|enterprise","culture":"description","red_flags":["flag1"],"glassdoor_sentiment":"positive|mixed|negative|unknown","recent_news":"any relevant news"}',
+        `Company: ${company}\nJob: ${title || ''}\n\nSearch results:\n${context}`,
+      )
+      const parsed = JSON.parse(summary.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '').match(/\{[\s\S]*\}/)?.[0] || '{}')
+      return json(res, 200, { company, sources: allResults.slice(0, 5), ai_summary: parsed })
+    } catch {
+      return json(res, 200, { company, sources: allResults.slice(0, 5), ai_summary: null })
+    }
+  }
+
+  json(res, 200, { company, sources: allResults.slice(0, 5), ai_summary: null })
+}
+
+// ─── Full Agent Runner: Orchestrates Scout → Classify → Match pipeline ───
+
+async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { query, location, platforms, min_score, resume_text, skills, preferred_job_types, preferred_locations } = body
+
+  const runId = randomUUID().slice(0, 8)
+  const logs: { step: string; status: string; message: string; jobs_found: number; jobs_matched: number; jobs_applied: number }[] = []
+
+  // Step 1: SEARCH
+  const searchStart = Date.now()
+  let allJobs: NormalizedJob[] = []
+  const errors: string[] = []
+  const sources: string[] = []
+
+  const searchQuery = query || 'software engineer'
+
+  // Run all sources
+  try {
+    const [him, rok, rem, arb, hn, li] = await Promise.allSettled([
+      searchHimalayas(searchQuery),
+      searchRemoteOK(searchQuery),
+      searchRemotive(searchQuery),
+      searchArbeitnow(searchQuery),
+      searchHackerNews(searchQuery),
+      searchLinkedInPublic(searchQuery, location || ''),
+    ])
+    for (const r of [him, rok, rem, arb, hn, li]) {
+      if (r.status === 'fulfilled' && r.value.length) allJobs.push(...r.value)
+    }
+    if (JSEARCH_API_KEY) {
+      const js = await searchJSearch(searchQuery, location || '')
+      allJobs.push(...js)
+    }
+  } catch (e) { errors.push(String(e)) }
+
+  // Deduplicate
+  const seen = new Set<string>()
+  allJobs = allJobs.filter(j => {
+    const key = `${j.title.toLowerCase().trim()}::${j.company.toLowerCase().trim()}`
+    if (seen.has(key)) return false
+    seen.add(key); return true
+  })
+
+  logs.push({ step: 'search', status: 'completed', message: `Found ${allJobs.length} jobs in ${Date.now() - searchStart}ms`, jobs_found: allJobs.length, jobs_matched: 0, jobs_applied: 0 })
+
+  // Step 2: CLASSIFY + MATCH (if AI available)
+  let matched = 0
+  if ((OPENAI_KEY || GEMINI_KEY) && allJobs.length > 0) {
+    const matchStart = Date.now()
+    const classifyPrompt = 'Classify job. Return JSON: {"role_type":"fullstack|ai_engineer|ml_engineer|devops|frontend|backend|other","company_bucket":"agency|startup|enterprise|recruiter|direct_client","match_score":0-100}. Score based on: AI Systems Engineer, 8 years experience, Vue.js, TypeScript, Python, Docker, OpenAI, Supabase, n8n.'
+
+    // Process top 30 jobs max to avoid timeout
+    const toProcess = allJobs.slice(0, 30)
+    for (const job of toProcess) {
+      try {
+        const raw = await callAI(classifyPrompt, `Title: ${job.title}\nCompany: ${job.company}\nDesc: ${(job.description || '').slice(0, 800)}`)
+        const parsed = JSON.parse(raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '').match(/\{[\s\S]*\}/)?.[0] || '{}')
+        if (parsed.match_score) {
+          job.match_score = parsed.match_score
+          if (parsed.match_score >= (min_score || 50)) matched++
+        }
+      } catch { /* skip */ }
+    }
+    logs.push({ step: 'classify_match', status: 'completed', message: `Classified ${toProcess.length} jobs, ${matched} matched in ${Date.now() - matchStart}ms`, jobs_found: 0, jobs_matched: matched, jobs_applied: 0 })
+  } else {
+    logs.push({ step: 'classify_match', status: 'skipped', message: 'No AI provider configured', jobs_found: 0, jobs_matched: 0, jobs_applied: 0 })
+  }
+
+  json(res, 200, {
+    run_id: runId,
+    jobs: allJobs,
+    logs,
+    total: allJobs.length,
+    matched,
+    errors,
+  })
+}
+
 const server = createServer(async (req, res) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -870,6 +1022,14 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/jobs/cover-letter' && req.method === 'POST') {
     return handleCoverLetter(req, res)
+  }
+
+  if (url.pathname === '/api/jobs/research' && req.method === 'POST') {
+    return handleResearchCompany(req, res)
+  }
+
+  if (url.pathname === '/api/jobs/agent/run' && req.method === 'POST') {
+    return handleAgentRun(req, res)
   }
 
   // Serve uploaded images
