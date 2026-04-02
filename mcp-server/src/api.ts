@@ -420,6 +420,49 @@ async function searchRemotive(query: string): Promise<NormalizedJob[]> {
   }
 }
 
+async function searchIndeedDirect(query: string, location: string): Promise<NormalizedJob[]> {
+  // Scrape Indeed PH via their public search page (no API key needed)
+  try {
+    const params = new URLSearchParams({ q: query, l: location || 'Philippines', fromage: '14', sc: '0kf:attr(DSQF7)' /* remote */ })
+    const res = await fetch(`https://ph.indeed.com/jobs?${params}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(15000),
+    })
+    if (!res.ok) return []
+    const html = await res.text()
+
+    // Parse job cards from Indeed HTML
+    const jobs: NormalizedJob[] = []
+    // Indeed uses data-jk for job IDs and specific class patterns
+    const jobCardRegex = /data-jk="([^"]+)"[\s\S]*?<h2[^>]*>[\s\S]*?<a[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<span[^>]*data-testid="company-name"[^>]*>([^<]+)<\/span>[\s\S]*?<div[^>]*data-testid="text-location"[^>]*>([^<]+)<\/div>/g
+    let match
+    while ((match = jobCardRegex.exec(html)) !== null && jobs.length < 15) {
+      jobs.push({
+        platform: 'indeed',
+        external_id: match[1],
+        title: match[2].trim(),
+        company: match[3].trim(),
+        location: match[4].trim(),
+        salary_min: null, salary_max: null, salary_currency: 'PHP',
+        job_type: 'remote',
+        description: null, requirements: null,
+        url: `https://ph.indeed.com/viewjob?jk=${match[1]}`,
+        posted_at: null,
+        match_score: null,
+        status: 'new',
+      })
+    }
+    return jobs
+  } catch (e) {
+    console.error('[Scout] Indeed Direct error:', e)
+    return []
+  }
+}
+
 async function searchArbeitnow(query: string): Promise<NormalizedJob[]> {
   try {
     const res = await fetch('https://www.arbeitnow.com/api/job-board-api')
@@ -638,6 +681,15 @@ async function handleJobSearch(req: IncomingMessage, res: ServerResponse) {
       results.push(...jobs)
       if (jobs.length) sources.push(`LinkedIn: ${jobs.length}`)
     } catch { errors.push('LinkedIn failed') }
+  }
+
+  // Indeed direct scrape (ph.indeed.com)
+  if (!platform || platform === 'indeed') {
+    try {
+      const jobs = await searchIndeedDirect(query, location || 'Philippines')
+      results.push(...jobs)
+      if (jobs.length) sources.push(`Indeed PH: ${jobs.length}`)
+    } catch { errors.push('Indeed PH scrape failed') }
   }
 
   // ─── API Key APIs (optional, enhances results) ───
