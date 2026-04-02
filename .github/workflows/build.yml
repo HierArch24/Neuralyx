@@ -28,17 +28,6 @@ jobs:
           VITE_OPENAI_KEY: ${{ env.VITE_OPENAI_KEY }}
           VITE_GEMINI_KEY: ${{ secrets.VITE_GEMINI_KEY }}
 
-      # Build self-hosted GitNexus
-      - name: Build GitNexus
-        run: |
-          git clone --depth 1 https://github.com/nxpatterns/gitnexus.git /tmp/gitnexus
-          cd /tmp/gitnexus/gitnexus-web
-          npm ci
-          npm run build
-          sed -i 's|"/assets/|"/gitnexus/assets/|g' dist/index.html
-          sed -i 's|"/wasm/|"/gitnexus/wasm/|g' dist/index.html
-          cp -r dist/ $GITHUB_WORKSPACE/dist/gitnexus/
-
       - name: Deploy to cPanel via rsync
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
