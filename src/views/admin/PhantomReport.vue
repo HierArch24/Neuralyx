@@ -17,10 +17,7 @@ const detailReport = ref<SessionReport | null>(null)
 const phantomStatus = ref<'online' | 'offline' | 'checking'>('checking')
 const phantomHealth = ref<Record<string, unknown> | null>(null)
 
-// Chat
-const chatMessages = ref<{ role: 'user' | 'phantom'; text: string; time: string }[]>([])
-const chatInput = ref('')
-const chatSending = ref(false)
+// Chat moved to global header slide panel
 
 // Report generation
 const generating = ref(false)
@@ -80,29 +77,6 @@ function buildReports() {
     status: 'completed', period: '24h',
   })
   reports.value = built.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-}
-
-async function sendChat() {
-  if (!chatInput.value.trim() || chatSending.value) return
-  const msg = chatInput.value.trim()
-  chatMessages.value.push({ role: 'user', text: msg, time: new Date().toLocaleTimeString() })
-  chatInput.value = ''
-  chatSending.value = true
-  try {
-    const res = await fetch(`${mcpUrl}/api/phantom/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg }), signal: AbortSignal.timeout(60000),
-    })
-    if (res.ok) {
-      const d = await res.json()
-      chatMessages.value.push({ role: 'phantom', text: d.response || d.message || JSON.stringify(d), time: new Date().toLocaleTimeString() })
-    } else {
-      chatMessages.value.push({ role: 'phantom', text: 'Phantom is not responding. Make sure it is running (port 3100).', time: new Date().toLocaleTimeString() })
-    }
-  } catch {
-    chatMessages.value.push({ role: 'phantom', text: 'Could not reach Phantom. Check if containers are running.', time: new Date().toLocaleTimeString() })
-  }
-  chatSending.value = false
 }
 
 async function generateReport() {
@@ -168,44 +142,8 @@ function timeAgo(d: string) {
       <p class="text-xs text-gray-400 mb-2">Start: <code class="bg-neural-800 px-2 py-0.5 rounded text-[10px]">cd phantom && docker compose up -d</code></p>
     </div>
 
-    <div class="grid lg:grid-cols-3 gap-5">
-      <!-- Left: Chat with Phantom -->
-      <div class="lg:col-span-1 glass-dark rounded-xl border border-neural-700/50 flex flex-col" style="height: 500px">
-        <div class="px-4 py-3 border-b border-neural-700/50 flex items-center gap-2">
-          <span>👻</span>
-          <h3 class="text-sm font-semibold text-white">Chat with Phantom</h3>
-        </div>
-        <div class="flex-1 overflow-y-auto p-3 space-y-2">
-          <div v-if="chatMessages.length === 0" class="text-center py-8 text-gray-600 text-xs">
-            Send a message to your AI co-worker
-          </div>
-          <div v-for="(msg, idx) in chatMessages" :key="idx"
-            class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
-            <div class="max-w-[85%] px-3 py-2 rounded-lg text-xs leading-relaxed"
-              :class="msg.role === 'user' ? 'bg-cyber-purple/20 text-white' : 'bg-neural-700/50 text-gray-300'">
-              <p class="whitespace-pre-wrap">{{ msg.text }}</p>
-              <p class="text-[8px] mt-1" :class="msg.role === 'user' ? 'text-cyber-purple/50' : 'text-gray-600'">{{ msg.time }}</p>
-            </div>
-          </div>
-          <div v-if="chatSending" class="flex justify-start">
-            <div class="px-3 py-2 rounded-lg bg-neural-700/50 text-gray-400 text-xs flex items-center gap-2">
-              <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-              Thinking...
-            </div>
-          </div>
-        </div>
-        <div class="p-3 border-t border-neural-700/50">
-          <form @submit.prevent="sendChat" class="flex gap-2">
-            <input v-model="chatInput" placeholder="Message Phantom..." :disabled="phantomStatus !== 'online'"
-              class="flex-1 px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
-            <button type="submit" :disabled="!chatInput.trim() || chatSending || phantomStatus !== 'online'"
-              class="px-3 py-2 bg-cyber-purple text-white rounded-lg text-xs hover:bg-cyber-purple/80 disabled:opacity-30">Send</button>
-          </form>
-        </div>
-      </div>
-
-      <!-- Right: Reports -->
-      <div class="lg:col-span-2 space-y-5">
+    <div class="space-y-5">
+      <!-- Reports -->
         <!-- Generate Report -->
         <div class="glass-dark rounded-xl p-4 border border-neural-700/50 flex items-center justify-between">
           <div class="flex items-center gap-3">
@@ -274,7 +212,6 @@ function timeAgo(d: string) {
           </table>
         </div>
       </div>
-    </div>
 
     <!-- Detail Modal -->
     <Teleport to="body">
