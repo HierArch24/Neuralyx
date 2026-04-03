@@ -1,0 +1,69 @@
+# Phantom AI Agent for NEURALYX
+# Reports to admin dashboard instead of Slack
+
+services:
+  phantom:
+    image: ghostwright/phantom:latest
+    container_name: neuralyx-phantom
+    ports:
+      - "3100:3100"
+    env_file:
+      - .env
+    environment:
+      - QDRANT_URL=http://phantom-qdrant:6333
+      - OLLAMA_URL=http://phantom-ollama:11434
+    volumes:
+      - phantom_config:/app/config
+      - phantom_evolved:/app/phantom-config
+      - phantom_data:/app/data
+      - phantom_public:/app/public
+      - phantom_repos:/app/repos
+    depends_on:
+      - qdrant
+      - ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    networks:
+      - phantom-net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: phantom-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    networks:
+      - phantom-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: phantom-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    networks:
+      - phantom-net
+
+volumes:
+  phantom_config:
+  phantom_evolved:
+  phantom_data:
+  phantom_public:
+  phantom_repos:
+  qdrant_data:
+  ollama_data:
+
+networks:
+  phantom-net:
+    driver: bridge

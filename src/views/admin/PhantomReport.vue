@@ -23,9 +23,16 @@ interface SessionReport {
 const reports = ref<SessionReport[]>([])
 const showDetail = ref(false)
 const detailReport = ref<SessionReport | null>(null)
-// Reports auto-generate from agent logs
+const phantomHealth = ref<Record<string, unknown> | null>(null)
+const phantomStatus = ref<'online' | 'offline' | 'checking'>('checking')
 
-onMounted(() => {
+onMounted(async () => {
+  // Check Phantom service health
+  try {
+    const res = await fetch('http://localhost:3100/health', { signal: AbortSignal.timeout(3000) })
+    if (res.ok) { phantomHealth.value = await res.json(); phantomStatus.value = 'online' }
+    else phantomStatus.value = 'offline'
+  } catch { phantomStatus.value = 'offline' }
   // Load reports from agent logs
   admin.fetchJobAgentLogs()
   admin.fetchJobListings()
@@ -127,10 +134,27 @@ function timeAgo(d: string) {
         <h2 class="text-2xl font-bold text-white">Phantom Reports</h2>
         <p class="text-sm text-gray-400 mt-1">AI agent session reports — auto-generated every 24 hours</p>
       </div>
-      <div class="flex items-center gap-2 text-xs text-gray-500">
-        <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-        {{ reports.length }} reports
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" :class="phantomStatus === 'online' ? 'bg-green-500/15 text-green-400' : phantomStatus === 'checking' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-red-500/15 text-red-400'">
+          <span class="w-2 h-2 rounded-full" :class="phantomStatus === 'online' ? 'bg-green-400 animate-pulse' : phantomStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'" />
+          <span class="text-xs font-medium">Phantom {{ phantomStatus === 'online' ? 'Online' : phantomStatus === 'checking' ? 'Checking...' : 'Offline' }}</span>
+        </div>
+        <span class="text-xs text-gray-500">{{ reports.length }} reports</span>
       </div>
+    </div>
+
+    <!-- Phantom Setup (when offline) -->
+    <div v-if="phantomStatus === 'offline'" class="glass-dark rounded-xl p-4 border border-red-500/20 mb-6">
+      <h3 class="text-xs text-red-400 font-semibold uppercase tracking-wider mb-2">Phantom Not Running</h3>
+      <p class="text-xs text-gray-400 mb-3">Start Phantom to enable AI co-worker features (session reports, auto-monitoring, self-evolving agent).</p>
+      <div class="bg-neural-800/50 rounded-lg p-3 font-mono text-[11px] text-gray-300 space-y-1">
+        <p class="text-gray-500"># Start Phantom (from project root)</p>
+        <p>cd phantom</p>
+        <p>docker compose up -d</p>
+        <p class="text-gray-500"># Check health</p>
+        <p>curl http://localhost:3100/health</p>
+      </div>
+      <p class="text-[9px] text-gray-600 mt-2">Requires: Anthropic API key in phantom/.env. Phantom runs on port 3100 with Qdrant (vector memory) + Ollama (embeddings).</p>
     </div>
 
     <!-- Registration Checklist -->
