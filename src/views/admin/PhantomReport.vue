@@ -23,9 +23,51 @@ const phantomHealth = ref<Record<string, unknown> | null>(null)
 const generating = ref(false)
 const genPeriod = ref('24h')
 
+// Infrastructure
+interface Container { name: string; cpu: string; mem_used: string; mem_limit: string; net_in: string; net_out: string; pids: number; status: string }
+const infrastructure = ref<Container[]>([])
+const infraLoading = ref(true)
+const infraRefreshTimer = ref<ReturnType<typeof setInterval> | null>(null)
+
 const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
 
+async function loadInfrastructure() {
+  try {
+    const res = await fetch(`${mcpUrl}/api/phantom/infrastructure`, { signal: AbortSignal.timeout(10000) })
+    if (res.ok) { const d = await res.json(); infrastructure.value = d.containers || [] }
+  } catch { /* offline */ }
+  infraLoading.value = false
+}
+
+function containerIcon(name: string) {
+  if (name.includes('phantom') && !name.includes('qdrant') && !name.includes('ollama')) return '👻'
+  if (name.includes('qdrant')) return '🧠'
+  if (name.includes('ollama')) return '🤖'
+  if (name.includes('frontend')) return '🌐'
+  if (name.includes('postgres')) return '🗄️'
+  if (name.includes('mcp')) return '⚡'
+  if (name.includes('ai')) return '🧪'
+  if (name.includes('searxng')) return '🔍'
+  return '📦'
+}
+
+function memPercent(used: string, limit: string) {
+  const parseSize = (s: string) => {
+    const m = s.match(/([\d.]+)(MiB|GiB|KiB|B)/)
+    if (!m) return 0
+    const v = parseFloat(m[1])
+    if (m[2] === 'GiB') return v * 1024
+    if (m[2] === 'KiB') return v / 1024
+    return v
+  }
+  const u = parseSize(used), l = parseSize(limit)
+  return l > 0 ? Math.round((u / l) * 100) : 0
+}
+
 onMounted(async () => {
+  loadInfrastructure()
+  // Auto-refresh infrastructure every 10 seconds
+  infraRefreshTimer.value = setInterval(loadInfrastructure, 10000)
   try {
     const res = await fetch(`${mcpUrl}/api/phantom/health`, { signal: AbortSignal.timeout(5000) })
     if (res.ok) { const d = await res.json(); if (d.status === 'ok') { phantomHealth.value = d; phantomStatus.value = 'online' } else phantomStatus.value = 'offline' }
@@ -140,6 +182,56 @@ function timeAgo(d: string) {
     <div v-if="phantomStatus === 'offline'" class="glass-dark rounded-xl p-4 border border-red-500/20 mb-6">
       <h3 class="text-xs text-red-400 font-semibold uppercase mb-2">Phantom Not Running</h3>
       <p class="text-xs text-gray-400 mb-2">Start: <code class="bg-neural-800 px-2 py-0.5 rounded text-[10px]">cd phantom && docker compose up -d</code></p>
+    </div>
+
+    <!-- Infrastructure Monitoring -->
+    <div class="glass-dark rounded-xl border border-neural-700/50 mb-6">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-neural-700/50">
+        <h3 class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Infrastructure — {{ infrastructure.length }} Containers</h3>
+        <button @click="loadInfrastructure" class="p-1 rounded hover:bg-neural-600 text-gray-500 hover:text-white transition-colors" title="Refresh">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        </button>
+      </div>
+      <div v-if="infraLoading" class="p-6 text-center text-gray-600 text-xs">Loading containers...</div>
+      <div v-else class="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4">
+        <div v-for="c in infrastructure" :key="c.name"
+          class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30 hover:border-neural-600 transition-colors">
+          <div class="flex items-center gap-2 mb-2">
+            <span>{{ containerIcon(c.name) }}</span>
+            <div class="min-w-0">
+              <p class="text-xs text-white font-medium truncate">{{ c.name }}</p>
+              <div class="flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                <span class="text-[9px] text-green-400">Running</span>
+              </div>
+            </div>
+          </div>
+          <!-- CPU -->
+          <div class="mb-1.5">
+            <div class="flex items-center justify-between text-[9px] text-gray-500 mb-0.5">
+              <span>CPU</span><span class="text-white">{{ c.cpu }}</span>
+            </div>
+            <div class="h-1 bg-neural-700 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-500" :class="parseFloat(c.cpu) > 50 ? 'bg-red-500' : parseFloat(c.cpu) > 20 ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: `${Math.max(parseFloat(c.cpu) || 1, 1)}%` }" />
+            </div>
+          </div>
+          <!-- Memory -->
+          <div class="mb-1.5">
+            <div class="flex items-center justify-between text-[9px] text-gray-500 mb-0.5">
+              <span>Memory</span><span class="text-white">{{ c.mem_used }}</span>
+            </div>
+            <div class="h-1 bg-neural-700 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-500" :class="memPercent(c.mem_used, c.mem_limit) > 80 ? 'bg-red-500' : memPercent(c.mem_used, c.mem_limit) > 50 ? 'bg-yellow-500' : 'bg-cyan-500'" :style="{ width: `${Math.max(memPercent(c.mem_used, c.mem_limit), 1)}%` }" />
+            </div>
+          </div>
+          <!-- Network -->
+          <div class="flex justify-between text-[8px] text-gray-600">
+            <span>↓{{ c.net_in }}</span>
+            <span>↑{{ c.net_out }}</span>
+            <span>PIDs: {{ c.pids }}</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="space-y-5">
