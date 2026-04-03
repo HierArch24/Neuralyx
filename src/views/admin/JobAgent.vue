@@ -49,29 +49,32 @@ function toggleAutoRun() {
 }
 
 const PLATFORMS = [
-  // Active - Free APIs (no auth)
-  { id: 'himalayas', name: 'Himalayas', enabled: true, icon: '⛰️', group: 'Free APIs' },
-  { id: 'remoteok', name: 'RemoteOK', enabled: true, icon: '🌍', group: 'Free APIs' },
-  { id: 'remotive', name: 'Remotive', enabled: true, icon: '🏠', group: 'Free APIs' },
-  { id: 'arbeitnow', name: 'Arbeitnow', enabled: true, icon: '🇪🇺', group: 'Free APIs' },
-  { id: 'hackernews', name: 'HN/YC Jobs', enabled: true, icon: '🟧', group: 'Free APIs' },
-  // Active - API Key (JSearch)
-  { id: 'indeed', name: 'Indeed', enabled: true, icon: '🔵', group: 'JSearch API' },
-  { id: 'linkedin', name: 'LinkedIn', enabled: true, icon: '🟦', group: 'JSearch API' },
-  { id: 'glassdoor', name: 'Glassdoor', enabled: true, icon: '🟢', group: 'JSearch API' },
-  { id: 'google', name: 'Google Jobs', enabled: true, icon: '🔴', group: 'JSearch API' },
-  // Philippines / Regional (Playwright)
-  { id: 'jobstreet', name: 'JobStreet PH', enabled: false, icon: '🟣', group: 'PH Sites', registered: true },
-  { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷', group: 'PH Sites', registered: true },
-  { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠', group: 'PH Sites', registered: true },
-  { id: 'bossjob', name: 'Bossjob', enabled: false, icon: '🟡', group: 'PH Sites', registered: true },
-  { id: 'remotehunter', name: 'RemoteHunter', enabled: false, icon: '🎯', group: 'PH Sites', registered: false },
-  // Freelance
-  { id: 'upwork', name: 'Upwork', enabled: false, icon: '🟩', group: 'Freelance', registered: false },
-  { id: 'toptal', name: 'Toptal', enabled: false, icon: '💎', group: 'Freelance', registered: false },
-  { id: 'freelancer', name: 'Freelancer.com', enabled: false, icon: '🏷️', group: 'Freelance', registered: false },
-  // Other
-  { id: 'facebook', name: 'Facebook Jobs', enabled: false, icon: '📘', group: 'Other', registered: false },
+  // Active - Free APIs (no auth needed)
+  { id: 'himalayas', name: 'Himalayas', enabled: true, icon: '⛰️', group: 'Free APIs', registered: false },
+  { id: 'remoteok', name: 'RemoteOK', enabled: true, icon: '🌍', group: 'Free APIs', registered: false },
+  { id: 'remotive', name: 'Remotive', enabled: true, icon: '🏠', group: 'Free APIs', registered: false },
+  { id: 'arbeitnow', name: 'Arbeitnow', enabled: true, icon: '🇪🇺', group: 'Free APIs', registered: false },
+  { id: 'hackernews', name: 'HN/YC Jobs', enabled: true, icon: '🟧', group: 'Free APIs', registered: false },
+  // Active - JSearch API (covers multiple boards)
+  { id: 'indeed', name: 'Indeed', enabled: true, icon: '🔵', group: 'JSearch', registered: true },
+  { id: 'linkedin', name: 'LinkedIn', enabled: true, icon: '🟦', group: 'JSearch', registered: true },
+  { id: 'glassdoor', name: 'Glassdoor', enabled: true, icon: '🟢', group: 'JSearch', registered: true },
+  { id: 'ziprecruiter', name: 'ZipRecruiter', enabled: true, icon: '✅', group: 'JSearch', registered: true },
+  { id: 'google', name: 'Google Jobs', enabled: true, icon: '🔴', group: 'JSearch', registered: false },
+  // Registered PH Sites (Playwright pending)
+  { id: 'jobstreet', name: 'JobStreet PH', enabled: false, icon: '🟣', group: 'Registered', registered: true },
+  { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷', group: 'Registered', registered: true },
+  { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠', group: 'Registered', registered: true },
+  { id: 'bossjob', name: 'Bossjob', enabled: false, icon: '🟡', group: 'Registered', registered: true },
+  { id: 'careerbuilder', name: 'CareerBuilder', enabled: false, icon: '🏗️', group: 'Registered', registered: true },
+  { id: 'freelancer', name: 'Freelancer.com', enabled: false, icon: '🏷️', group: 'Registered', registered: true },
+  // Not yet registered
+  { id: 'remotehunter', name: 'RemoteHunter', enabled: false, icon: '🎯', group: 'To Register', registered: false },
+  { id: 'upwork', name: 'Upwork', enabled: false, icon: '🟩', group: 'To Register', registered: false },
+  { id: 'toptal', name: 'Toptal', enabled: false, icon: '💎', group: 'To Register', registered: false },
+  { id: 'weworkremotely', name: 'We Work Remotely', enabled: false, icon: '🌐', group: 'To Register', registered: false },
+  { id: 'dice', name: 'Dice', enabled: false, icon: '🎲', group: 'To Register', registered: false },
+  { id: 'facebook', name: 'Facebook Jobs', enabled: false, icon: '📘', group: 'To Register', registered: false },
 ]
 
 const platformToggles = ref(

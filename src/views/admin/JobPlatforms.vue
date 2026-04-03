@@ -41,6 +41,12 @@ const KNOWN: Record<string, { name: string; type: Platform['type']; url: string;
   grabjobs: { name: 'GrabJobs', type: 'job_board', url: 'https://grabjobs.co', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active' },
   // Freelance
   freelancer: { name: 'Freelancer.com', type: 'freelance', url: 'https://freelancer.com', registered: true, profile_complete: false, agent: 'Project Monitor', agent_status: 'idle' },
+  careerbuilder: { name: 'CareerBuilder', type: 'job_board', url: 'https://careerbuilder.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'idle' },
+  toptal: { name: 'Toptal', type: 'freelance', url: 'https://toptal.com', registered: false, profile_complete: false, agent: 'Not Assigned', agent_status: 'none' },
+  remotehunter: { name: 'RemoteHunter', type: 'aggregator', url: 'https://remotehunter.com', registered: false, profile_complete: false, agent: 'Not Assigned', agent_status: 'none' },
+  'remote.co': { name: 'Remote.co', type: 'aggregator', url: 'https://remote.co', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active' },
+  learn4good: { name: 'Learn4Good', type: 'aggregator', url: 'https://learn4good.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active' },
+  remoterocketship: { name: 'RemoteRocketship', type: 'aggregator', url: 'https://remoterocketship.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active' },
 }
 
 const platforms = ref<Platform[]>([])
