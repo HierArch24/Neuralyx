@@ -16,14 +16,17 @@ const detailApp = ref<JobApplication | null>(null)
 const editForm = ref({ status: '', channel: '', agency_name: '', notes: '', salary_offered: '', follow_up_at: '' })
 
 const PIPELINE = [
-  { group: 'Application', statuses: ['applying', 'applied', 'apply_failed'], color: 'bg-blue-500', text: 'text-blue-400', bg: 'bg-blue-500/15' },
-  { group: 'Screening', statuses: ['under_review', 'screened_out', 'phone_screen', 'endorsed'], color: 'bg-cyan-500', text: 'text-cyan-400', bg: 'bg-cyan-500/15' },
-  { group: 'Assessment', statuses: ['technical_test', 'test_submitted', 'test_passed', 'test_failed'], color: 'bg-yellow-500', text: 'text-yellow-400', bg: 'bg-yellow-500/15' },
-  { group: 'Client Match', statuses: ['profile_sent', 'client_reviewing', 'client_approved', 'client_rejected'], color: 'bg-violet-500', text: 'text-violet-400', bg: 'bg-violet-500/15' },
-  { group: 'Interview', statuses: ['interview_scheduled', 'interview_round_1', 'interview_round_2', 'interview_round_3', 'interview_passed', 'interview_failed'], color: 'bg-purple-500', text: 'text-purple-400', bg: 'bg-purple-500/15' },
-  { group: 'Offer', statuses: ['offer_received', 'negotiating', 'offer_accepted', 'offer_declined'], color: 'bg-green-500', text: 'text-green-400', bg: 'bg-green-500/15' },
-  { group: 'Onboarding', statuses: ['pending_start', 'documents_submitted', 'onboarded'], color: 'bg-emerald-500', text: 'text-emerald-400', bg: 'bg-emerald-500/15' },
-  { group: 'Closed', statuses: ['withdrawn', 'ghosted', 'position_filled'], color: 'bg-red-500', text: 'text-red-400', bg: 'bg-red-500/15' },
+  { group: 'Application', stage: '1', statuses: ['applying', 'applied', 'apply_failed'], color: 'bg-blue-500', text: 'text-blue-400', bg: 'bg-blue-500/15' },
+  { group: 'JD Validation', stage: '1.6', statuses: ['jd_validated', 'jd_blocked', 'jd_method_violation'], color: 'bg-indigo-500', text: 'text-indigo-400', bg: 'bg-indigo-500/15' },
+  { group: 'Delivery Check', stage: '2', statuses: ['delivery_pending', 'delivery_confirmed', 'delivery_failed'], color: 'bg-sky-500', text: 'text-sky-400', bg: 'bg-sky-500/15' },
+  { group: 'Screening', stage: '3', statuses: ['under_review', 'screened_out', 'phone_screen', 'endorsed'], color: 'bg-cyan-500', text: 'text-cyan-400', bg: 'bg-cyan-500/15' },
+  { group: 'Pre-Assessment', stage: '4', statuses: ['video_intro', 'pre_screen_questions', 'portfolio_review', 'pre_assessment_passed'], color: 'bg-teal-500', text: 'text-teal-400', bg: 'bg-teal-500/15' },
+  { group: 'Assessment', stage: '5', statuses: ['technical_test', 'test_submitted', 'test_passed', 'test_failed', 'take_home_project', 'case_study'], color: 'bg-yellow-500', text: 'text-yellow-400', bg: 'bg-yellow-500/15' },
+  { group: 'Client Match', stage: '6', statuses: ['profile_sent', 'client_reviewing', 'client_approved', 'client_rejected'], color: 'bg-violet-500', text: 'text-violet-400', bg: 'bg-violet-500/15' },
+  { group: 'Interview', stage: '7', statuses: ['interview_scheduled', 'interview_round_1', 'interview_round_2', 'interview_round_3', 'interview_passed', 'interview_failed'], color: 'bg-purple-500', text: 'text-purple-400', bg: 'bg-purple-500/15' },
+  { group: 'Offer', stage: '8', statuses: ['offer_received', 'negotiating', 'offer_accepted', 'offer_declined', 'offer_withdrawn'], color: 'bg-green-500', text: 'text-green-400', bg: 'bg-green-500/15' },
+  { group: 'Onboarding', stage: '9', statuses: ['pending_start', 'documents_submitted', 'account_setup', 'training', 'onboarded'], color: 'bg-emerald-500', text: 'text-emerald-400', bg: 'bg-emerald-500/15' },
+  { group: 'Closed', stage: '10', statuses: ['withdrawn', 'ghosted', 'position_filled', 'no_response_timeout', 'jd_method_violation', 'submission_failed', 'screening_rejected', 'assessment_failed', 'no_client_match', 'interview_rejected', 'offer_declined', 'offer_withdrawn', 'accepted_elsewhere'], color: 'bg-red-500', text: 'text-red-400', bg: 'bg-red-500/15' },
 ]
 
 onMounted(() => { admin.fetchJobApplications(); admin.fetchJobListings() })
@@ -208,10 +211,13 @@ async function deleteApp(app: JobApplication) {
     <!-- ═══ Pipeline Report Modal ═══ -->
     <Teleport to="body">
       <div v-if="showDetail && detailApp" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="showDetail = false">
-        <div class="glass-dark rounded-xl w-full max-w-lg border border-neural-600 max-h-[85vh] flex flex-col">
+        <div class="glass-dark rounded-xl w-full max-w-2xl border border-neural-600 max-h-[90vh] flex flex-col">
           <div class="px-6 py-4 border-b border-neural-700 shrink-0">
             <h3 class="text-lg font-bold text-white">Pipeline Status Report</h3>
             <p class="text-sm text-gray-400">{{ getJob(detailApp.job_listing_id)?.title }} at {{ getJob(detailApp.job_listing_id)?.company }}</p>
+            <p v-if="(detailApp as any).auto_applied" class="text-[10px] text-cyber-purple mt-1 flex items-center gap-1">
+              <span>🤖</span> Auto-applied by AI Agent
+            </p>
           </div>
           <div class="flex-1 overflow-y-auto p-6 space-y-4">
             <!-- Current Status -->
@@ -222,12 +228,12 @@ async function deleteApp(app: JobApplication) {
 
             <!-- Stage-by-stage pipeline -->
             <div class="space-y-1">
-              <div v-for="(stage, idx) in pipelineProgress(detailApp)" :key="stage.group"
+              <div v-for="stage in pipelineProgress(detailApp)" :key="stage.group"
                 class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors"
                 :class="stage.active ? 'bg-neural-700/40 ring-1 ring-neural-600' : ''">
-                <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                <div class="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
                   :class="stage.completed ? stage.color + ' text-white' : stage.active ? stage.color + ' text-white animate-pulse' : 'bg-neural-700/50 text-gray-600'">
-                  {{ stage.completed ? '✓' : idx + 1 }}
+                  {{ stage.completed ? '✓' : stage.stage }}
                 </div>
                 <div class="flex-1">
                   <p class="text-xs font-medium" :class="stage.completed ? 'text-white' : stage.active ? 'text-white' : 'text-gray-600'">{{ stage.group }}</p>
@@ -240,24 +246,44 @@ async function deleteApp(app: JobApplication) {
             </div>
 
             <!-- Key Info -->
-            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-neural-700">
+            <div class="grid grid-cols-3 gap-2 pt-3 border-t border-neural-700">
               <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
                 <p class="text-[9px] text-gray-500 uppercase">Channel</p>
-                <p class="text-sm text-white capitalize">{{ detailApp.channel }}{{ detailApp.agency_name ? ` — ${detailApp.agency_name}` : '' }}</p>
+                <p class="text-xs text-white capitalize">{{ detailApp.channel }}{{ detailApp.agency_name ? ` — ${detailApp.agency_name}` : '' }}</p>
               </div>
               <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
                 <p class="text-[9px] text-gray-500 uppercase">Applied Via</p>
-                <p class="text-sm text-white capitalize">{{ detailApp.applied_via || '—' }}</p>
+                <p class="text-xs text-white capitalize">{{ detailApp.applied_via || '—' }}</p>
+              </div>
+              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                <p class="text-[9px] text-gray-500 uppercase">JD Compliance</p>
+                <p class="text-xs text-green-400">Validated</p>
               </div>
               <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
                 <p class="text-[9px] text-gray-500 uppercase">Salary Offered</p>
-                <p class="text-sm" :class="detailApp.salary_offered ? 'text-green-400' : 'text-gray-500'">{{ detailApp.salary_offered ? `${detailApp.salary_currency} ${detailApp.salary_offered.toLocaleString()}` : '—' }}</p>
+                <p class="text-xs" :class="detailApp.salary_offered ? 'text-green-400' : 'text-gray-500'">{{ detailApp.salary_offered ? `${detailApp.salary_currency} ${detailApp.salary_offered.toLocaleString()}` : '—' }}</p>
               </div>
               <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
                 <p class="text-[9px] text-gray-500 uppercase">Follow-up</p>
-                <p class="text-sm" :class="detailApp.follow_up_at ? (new Date(detailApp.follow_up_at) < new Date() ? 'text-red-400' : 'text-yellow-400') : 'text-gray-500'">
+                <p class="text-xs" :class="detailApp.follow_up_at ? (new Date(detailApp.follow_up_at) < new Date() ? 'text-red-400' : 'text-yellow-400') : 'text-gray-500'">
                   {{ detailApp.follow_up_at ? new Date(detailApp.follow_up_at).toLocaleDateString() : '—' }}
                 </p>
+              </div>
+              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30">
+                <p class="text-[9px] text-gray-500 uppercase">Days in Pipeline</p>
+                <p class="text-xs text-white">{{ daysSince(detailApp.created_at) }}d</p>
+              </div>
+            </div>
+
+            <!-- Application Log (if auto-applied) -->
+            <div v-if="(detailApp as any).apply_log?.length" class="pt-3 border-t border-neural-700">
+              <p class="text-[9px] text-gray-500 uppercase mb-2">Application Log</p>
+              <div class="space-y-1 max-h-[120px] overflow-y-auto">
+                <div v-for="(log, i) in (detailApp as any).apply_log" :key="i" class="flex items-center gap-2 text-[10px]">
+                  <span :class="log.status === 'done' ? 'text-green-400' : log.status === 'failed' ? 'text-red-400' : 'text-gray-400'">{{ log.status === 'done' ? '✓' : log.status === 'failed' ? '✗' : '•' }}</span>
+                  <span class="text-gray-300">{{ log.step }}</span>
+                  <span class="text-gray-600 ml-auto">{{ log.message }}</span>
+                </div>
               </div>
             </div>
 

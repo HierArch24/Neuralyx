@@ -43,8 +43,15 @@ services:
       - ADZUNA_APP_ID=${ADZUNA_APP_ID:-}
       - ADZUNA_APP_KEY=${ADZUNA_APP_KEY:-}
       - OPENAI_KEY=${VITE_OPENAI_KEY:-}
-      - GEMINI_KEY=${VITE_GEMINI_KEY:-}
+      - GEMINI_KEY=${VITE_GEMINI_KEY:-AIzaSyCNcGN8E28I3y9JWUQsrAKdJrVsVWYUObI}
       - SEARXNG_URL=http://neuralyx-searxng:8080
+      - SMTP_HOST=${SMTP_HOST:-mail.dev-environment.site}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_SECURE=${SMTP_SECURE:-true}
+      - SMTP_USER=${SMTP_USER:-jobs@neuralyx.ai.dev-environment.site}
+      - SMTP_PASS=${SMTP_PASS:-Jobs@2026}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Gabriel Alvin Aquino}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-jobs@neuralyx.ai.dev-environment.site}
     volumes:
       - uploads_data:/app/uploads
     depends_on:

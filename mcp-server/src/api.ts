@@ -2,9 +2,18 @@ import { createServer, IncomingMessage, ServerResponse } from 'node:http'
 import { writeFile, mkdir, readFile, stat } from 'node:fs/promises'
 import { join, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import nodemailer from 'nodemailer'
 
 const PORT = Number(process.env.PORT || 8080)
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/app/uploads'
+// Email config — supports Gmail SMTP or cPanel SMTP
+const SMTP_HOST = process.env.SMTP_HOST || '' // cPanel: mail.yourdomain.com
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465)
+const SMTP_SECURE = process.env.SMTP_SECURE !== 'false' // true for 465, false for 587
+const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || ''
+const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || ''
+const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || process.env.SMTP_FROM_NAME || 'Gabriel Alvin Aquino'
+const SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL || SMTP_USER
 const JSEARCH_API_KEY = process.env.JSEARCH_API_KEY || ''
 
 // Ensure uploads directory exists
@@ -753,20 +762,23 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
   // Fallback: Gemini
   if (GEMINI_KEY) {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: [{ parts: [{ text: userPrompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 500 },
+          generationConfig: { temperature: 0.3, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } },
         }),
+        signal: AbortSignal.timeout(30000),
       },
     )
     if (res.ok) {
       const data = await res.json()
-      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
+      const parts = data.candidates?.[0]?.content?.parts || []
+      const textPart = parts.find((p: Record<string, unknown>) => p.text) as { text: string } | undefined
+      return textPart?.text?.trim() || ''
     }
   }
 
@@ -1094,28 +1106,96 @@ async function handleNurture(req: IncomingMessage, res: ServerResponse) {
 // ─── 5 Parallel Detail-Fill Agents ───
 
 async function fillOneJob(job: { id: string; title: string; company: string; description?: string | null; location?: string | null; url?: string }): Promise<Record<string, unknown>> {
-  const desc = (job.description || '').slice(0, 1500)
+  const desc = (job.description || '').slice(0, 2000)
   const prompt = `Analyze this job posting. Return ONLY valid JSON:
 {
-  "role_type": "fullstack|ai_engineer|ml_engineer|devops|frontend|backend|data|mobile|other",
+  "role_type": "fullstack|ai_engineer|ml_engineer|devops|frontend|backend|data|mobile|automation|other",
   "company_bucket": "agency|startup|enterprise|recruiter|direct_client",
   "company_type_detail": "outsourcing|product|consulting|staffing|saas|fintech|healthtech|edtech|ecommerce|government|nonprofit|other",
-  "apply_method": "platform_apply|company_website|email|easy_apply|external_ats",
+  "apply_channels": [
+    {"channel": "job_board", "status": "pending", "detail": "Apply via [platform]"},
+    {"channel": "email", "status": "pending", "detail": "Send resume to hr@...", "target": "email@found.com"},
+    {"channel": "company_portal", "status": "pending", "detail": "Apply at company.com/careers", "target": "https://..."},
+    {"channel": "form", "status": "pending", "detail": "Fill application form", "target": "https://forms..."},
+    {"channel": "cold_outreach", "status": "research_needed", "detail": "Find recruiter on LinkedIn"}
+  ],
+  "expected_filtering_layers": ["resume_screen","form_questions","video_intro","technical_test","personality_test","trial_task","portfolio_review","interview"],
+  "recruiter_email": "any email found in description (hr@, careers@, apply@, recruiter name email) or null",
+  "company_careers_url": "any company careers/apply/jobs page URL found or null",
+  "external_form_url": "Google Form, Typeform, JotForm, or any external application form URL found or null",
+  "inferred_company_email": "if no email found, guess: hr@companydomain.com or careers@companydomain.com based on company name, or null",
+  "ats_system": "greenhouse|lever|workday|bamboohr|jazz|icims|none|unknown",
   "requires_registration": true/false,
   "work_arrangement": "remote|hybrid|onsite|flexible",
   "country": "2-letter country code or 'Remote'",
-  "match_score": 0-100 (for AI Systems Engineer with Vue,TypeScript,Python,Docker,OpenAI,Supabase,n8n,LangChain),
-  "skill_matches": ["matched skills"],
-  "skill_gaps": ["missing skills"],
+  "match_score": 0-100 (for AI Systems Engineer with Vue,TypeScript,Python,PHP,Laravel,Docker,OpenAI,Supabase,n8n,LangChain,FastAPI,MCP),
+  "skill_matches": ["matched skills from the job that candidate has"],
+  "skill_gaps": ["required skills candidate lacks"],
   "seniority": "junior|mid|senior|lead|principal",
   "salary_estimate": "estimated range if not specified, or null",
   "recommendation": "strong_match|good_match|moderate|weak|no_match"
-}`
+}
+IMPORTANT rules for apply_channels (array of ALL ways to apply to this job):
+- ALWAYS include {"channel":"job_board","status":"pending","detail":"Apply via [platform name]"} — this is always channel 1
+- If email found in description: add {"channel":"email","status":"pending","target":"the@email.com","detail":"Send resume + cover letter"}
+- If company careers URL found: add {"channel":"company_portal","status":"pending","target":"url","detail":"Apply on company site"}
+- If Google Form / Typeform / JotForm URL found: add {"channel":"form","status":"pending","target":"url","detail":"Fill application form"}
+- If NO email found in description: you MUST still add an email channel — use inferred_company_email as target with status "pending". NEVER use "research_needed" status. Always guess: hr@companydomain.com or careers@companydomain.com or jobs@companydomain.com
+- If company seems to use an ATS (Greenhouse, Lever, Workday): note in ats_system field
+
+For expected_filtering_layers: list what steps the candidate will likely face AFTER applying. Only include what's mentioned or implied:
+- "resume_screen" — always include this
+- "form_questions" — if the job mentions screening questions
+- "video_intro" — if description mentions video submission
+- "technical_test" — if coding test / assessment mentioned
+- "personality_test" — if MBTI/DISC mentioned
+- "trial_task" — if paid trial / test project mentioned
+- "portfolio_review" — if GitHub/portfolio requested
+- "interview" — always include this
+
+For inferred_company_email: ALWAYS fill this. If company is "Acme Inc" and URL contains acme.com, use hr@acme.com. If company is "TechCorp" with no domain visible, guess hr@techcorp.com. Look for domains in the job URL and description URLs. Common patterns: hr@, careers@, jobs@, recruiting@, talent@, apply@. NEVER return null for this field — always provide your best guess.`
 
   const raw = await callAI(prompt, `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || ''}\nURL: ${job.url || ''}\nDescription: ${desc}`)
   const jsonStr = raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '')
   const match = jsonStr.match(/\{[\s\S]*\}/)
-  return match ? JSON.parse(match[0]) : {}
+  const result = match ? JSON.parse(match[0]) : {}
+
+  // Auto-research: if no recruiter_email and no inferred_company_email, try SearXNG
+  if (!result.recruiter_email && !result.inferred_company_email && SEARXNG_URL) {
+    try {
+      const searchRes = await searchSearXNG(`${job.company} careers email contact apply`)
+      if (searchRes.length > 0) {
+        // Extract emails from search results
+        const allText = searchRes.map(r => `${r.title} ${r.content}`).join(' ')
+        const emailMatch = allText.match(/[\w.+-]+@[\w-]+\.[\w.]+/g)
+        if (emailMatch?.length) {
+          result.recruiter_email = emailMatch[0]
+        } else {
+          // Try to extract domain from URLs and guess
+          const urlMatch = searchRes[0]?.url?.match(/https?:\/\/(?:www\.)?([^/]+)/)
+          if (urlMatch) result.inferred_company_email = `hr@${urlMatch[1]}`
+        }
+        // Also try to find careers page
+        const careersResult = searchRes.find(r => /careers|jobs|apply|hiring/i.test(r.url))
+        if (careersResult && !result.company_careers_url) {
+          result.company_careers_url = careersResult.url
+        }
+      }
+    } catch { /* SearXNG unavailable */ }
+  }
+
+  // Ensure apply_channels never has "research_needed" — replace with inferred email
+  if (Array.isArray(result.apply_channels)) {
+    for (const ch of result.apply_channels) {
+      if (ch.status === 'research_needed' && (result.recruiter_email || result.inferred_company_email)) {
+        ch.status = 'pending'
+        ch.target = result.recruiter_email || result.inferred_company_email
+        ch.detail = `Send resume to ${ch.target}`
+      }
+    }
+  }
+
+  return result
 }
 
 async function handleFillDetails(req: IncomingMessage, res: ServerResponse) {
@@ -1174,17 +1254,12 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
   const errors: string[] = []
   const sources: string[] = []
 
-  // Search across multiple domain keywords for maximum coverage
+  // Search with focused queries matching Gabriel's expertise
   const domainQueries = query ? [query] : [
     'AI automation engineer',
-    'full stack developer Vue',
-    'marketing automation',
-    'DevOps MLOps engineer',
-    'AI chatbot developer',
-    'system integration engineer',
+    'Vue TypeScript developer',
     'Python AI developer',
-    'data analytics engineer',
-    'business automation',
+    'fullstack developer remote',
   ]
 
   const searchLoc = location || ''
@@ -1218,17 +1293,22 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
     seen.add(key); return true
   })
 
-  logs.push({ step: 'search', status: 'completed', message: `Found ${allJobs.length} jobs in ${Date.now() - searchStart}ms`, jobs_found: allJobs.length, jobs_matched: 0, jobs_applied: 0 })
+  // Pre-filter: remove obviously irrelevant jobs by title keywords BEFORE AI scoring
+  const EXCLUDE_TITLES = /\b(nurse|nursing|teacher|teaching|accountant|accounting|receptionist|cashier|driver|cook|chef|waiter|waitress|barista|janitor|security guard|call center|customer service rep|beauty|salon|massage|eLearning trainer|audio evaluator|linguist|translator|french|spanish|german|japanese|korean|mandarin|transcription|data entry clerk|typist|virtual assistant|admin assistant|bookkeeper|payroll)\b/i
+  const preFilterCount = allJobs.length
+  allJobs = allJobs.filter(j => !EXCLUDE_TITLES.test(j.title))
+
+  logs.push({ step: 'search', status: 'completed', message: `Found ${preFilterCount} → filtered to ${allJobs.length} in ${Date.now() - searchStart}ms`, jobs_found: allJobs.length, jobs_matched: 0, jobs_applied: 0 })
 
   // Step 2: CLASSIFY + MATCH (if AI available)
   let matched = 0
   if ((OPENAI_KEY || GEMINI_KEY) && allJobs.length > 0) {
     const matchStart = Date.now()
-    const classifyPrompt = 'Classify job. Return JSON: {"role_type":"fullstack|ai_engineer|ml_engineer|devops|frontend|backend|data|marketing|other","company_bucket":"agency|startup|enterprise|recruiter|direct_client","company_type_detail":"outsourcing|product|consulting|staffing|saas|other","match_score":0-100,"work_arrangement":"remote|hybrid|onsite"}. Domains: AI automation, marketing automation, business automation, fullstack (Vue/Python/Node), DevOps/MLOps, AI/ML, chatbot, system integration, data analytics. Skills: Vue.js, TypeScript, Python, Docker, OpenAI, Supabase, n8n, LangChain, CrewAI, FastAPI, MCP. Score 80+=strong, 60-79=good, below 40=skip. Exclude .NET, SAP, receptionist, data entry.'
+    const classifyPrompt = 'Classify job. Return JSON: {"role_type":"fullstack|ai_engineer|ml_engineer|devops|frontend|backend|data|automation|other","company_bucket":"agency|startup|enterprise|recruiter|direct_client","company_type_detail":"outsourcing|product|consulting|staffing|saas|other","match_score":0-100,"work_arrangement":"remote|hybrid|onsite"}. Target profile: AI Systems Engineer & Automation Developer. Core skills: Vue.js, TypeScript, Python, PHP, Laravel, Docker, OpenAI API, Supabase, n8n, LangChain, CrewAI, FastAPI, MCP, PostgreSQL, GSAP, Tailwind CSS, Pinia. Strong domains: AI/ML automation, AI agent development, business process automation, fullstack web dev (Vue/Python/Node), DevOps/MLOps, chatbot/AI assistant building, system integration, workflow automation. Score 80+=strong match, 60-79=good, 40-59=moderate, below 40=irrelevant. HARD EXCLUDE (score 0): .NET, C#, SAP, Java/Spring, receptionist, data entry, manual QA, accounting, nursing, teaching, sales rep, customer service, graphic design, content writing. Include PHP/Laravel as a valid skill match. Only score high if the job genuinely needs software engineering, AI, automation, or DevOps skills.'
 
-    // Process top 50 jobs to cover more results
-    const minRequired = min_score || 60
-    const toProcess = allJobs.slice(0, 50)
+    // Process ALL found jobs (pre-filtered already)
+    const minRequired = min_score || 65
+    const toProcess = allJobs.slice(0, 80)
     let discarded = 0
     for (const job of toProcess) {
       try {
@@ -1242,7 +1322,8 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
       } catch { /* skip */ }
     }
     // Remove low-scoring jobs (below threshold) — don't save them
-    allJobs = allJobs.filter(j => j.match_score === null || j.match_score >= minRequired)
+    // Only keep jobs that were scored AND passed the threshold — remove all unscored/low-scoring
+    allJobs = allJobs.filter(j => j.match_score !== null && j.match_score !== undefined && j.match_score >= minRequired)
     logs.push({ step: 'classify_match', status: 'completed', message: `Classified ${toProcess.length}, ${matched} matched (≥${minRequired}%), ${discarded} discarded in ${Date.now() - matchStart}ms`, jobs_found: 0, jobs_matched: matched, jobs_applied: 0 })
   } else {
     logs.push({ step: 'classify_match', status: 'skipped', message: 'No AI provider configured', jobs_found: 0, jobs_matched: 0, jobs_applied: 0 })
@@ -1256,6 +1337,299 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
     matched,
     errors,
   })
+}
+
+// ─── Application Strategy Engine ───
+
+interface StrategyPlan {
+  strategy_type: 'strict' | 'dual' | 'parallel' | 'opportunistic'
+  primary: { channel: string; tone: string; action: string; target?: string }
+  secondary: { channel: string; tone: string; action: string; target?: string; delay_hours: number }[]
+  variation_required: boolean
+  safety_notes: string[]
+}
+
+function buildApplicationStrategy(job: Record<string, unknown>): StrategyPlan {
+  const rawData = (job.raw_data || {}) as Record<string, unknown>
+  const channels = (rawData.apply_channels || []) as { channel: string; status: string; detail: string; target?: string }[]
+  const desc = ((job.description || '') as string).toLowerCase()
+  const matchScore = (job.match_score || 0) as number
+
+  // Detect strict compliance signals
+  const strictSignals = ['only applications submitted', 'only apply through', 'do not email', 'do not contact', 'applications via other channels will not be considered']
+  const isStrict = strictSignals.some(s => desc.includes(s))
+
+  // Detect available channels
+  const hasJobBoard = channels.some(c => c.channel === 'job_board')
+  const hasEmail = channels.some(c => c.channel === 'email' && c.status !== 'research_needed')
+  const hasPortal = channels.some(c => c.channel === 'company_portal')
+  const hasForm = channels.some(c => c.channel === 'form')
+  const emailTarget = channels.find(c => c.channel === 'email')?.target || (rawData.recruiter_email as string) || (rawData.inferred_company_email as string) || null
+
+  // Determine primary channel
+  let primaryChannel = 'job_board'
+  let primaryTone = 'concise'
+  if (hasPortal) { primaryChannel = 'company_portal'; primaryTone = 'formal' }
+  else if (hasForm) { primaryChannel = 'form'; primaryTone = 'formal' }
+  else if (hasEmail && !hasJobBoard) { primaryChannel = 'email'; primaryTone = 'conversational' }
+
+  // Build strategy
+  if (isStrict) {
+    return {
+      strategy_type: 'strict',
+      primary: { channel: primaryChannel, tone: primaryTone, action: 'apply', target: channels.find(c => c.channel === primaryChannel)?.target },
+      secondary: [],
+      variation_required: false,
+      safety_notes: ['Strict compliance — only apply through specified channel', 'Do NOT send additional emails or applications'],
+    }
+  }
+
+  const secondary: StrategyPlan['secondary'] = []
+
+  if (matchScore >= 80) {
+    // High-value job → opportunistic multi-channel
+    if (hasJobBoard && primaryChannel !== 'job_board') {
+      secondary.push({ channel: 'job_board', tone: 'concise', action: 'easy_apply', delay_hours: 0 })
+    }
+    if (hasEmail && primaryChannel !== 'email' && emailTarget) {
+      secondary.push({ channel: 'email', tone: 'conversational', action: 'follow_up_email', target: emailTarget, delay_hours: 4 })
+    }
+    if (hasPortal && primaryChannel !== 'company_portal') {
+      secondary.push({ channel: 'company_portal', tone: 'formal', action: 'apply', target: channels.find(c => c.channel === 'company_portal')?.target, delay_hours: 2 })
+    }
+
+    return {
+      strategy_type: secondary.length >= 2 ? 'parallel' : 'dual',
+      primary: { channel: primaryChannel, tone: primaryTone, action: 'apply', target: channels.find(c => c.channel === primaryChannel)?.target },
+      secondary,
+      variation_required: secondary.length > 0,
+      safety_notes: ['High-value match — multi-channel recommended', 'Vary cover letter tone per channel', `Delay ${secondary.map(s => s.delay_hours + 'h').join(', ')} between submissions`],
+    }
+  }
+
+  // Standard dual-channel
+  if (hasEmail && emailTarget && primaryChannel !== 'email') {
+    secondary.push({ channel: 'email', tone: 'conversational', action: 'follow_up_email', target: emailTarget, delay_hours: 6 })
+  }
+
+  return {
+    strategy_type: secondary.length > 0 ? 'dual' : 'strict',
+    primary: { channel: primaryChannel, tone: primaryTone, action: 'apply', target: channels.find(c => c.channel === primaryChannel)?.target },
+    secondary,
+    variation_required: secondary.length > 0,
+    safety_notes: secondary.length > 0 ? ['Send follow-up email after primary application', 'Use conversational tone for email — not a duplicate application'] : ['Single-channel application'],
+  }
+}
+
+async function handleStrategyPlan(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { job } = body
+  if (!job) return json(res, 400, { error: 'job required' })
+  const plan = buildApplicationStrategy(job)
+  json(res, 200, plan)
+}
+
+// Generate channel-specific cover letter variant
+async function generateChannelVariant(baseCoverLetter: string, tone: 'formal' | 'concise' | 'conversational', jobTitle: string, company: string): Promise<string> {
+  if (!baseCoverLetter || !(OPENAI_KEY || GEMINI_KEY)) return baseCoverLetter
+  const toneInstructions: Record<string, string> = {
+    formal: 'Rewrite this cover letter in a formal, structured tone suitable for an ATS/company portal submission. Keep all facts and metrics. Max 350 words.',
+    concise: 'Rewrite this cover letter to be concise and punchy for a job board submission. Cut to 200 words max. Keep the strongest metrics.',
+    conversational: 'Rewrite this as a brief, conversational email (not a formal cover letter). 150 words max. Start with "Hi [Company] team," — express genuine interest, mention 1-2 key strengths, end with a call to action.',
+  }
+  try {
+    return await callAI(toneInstructions[tone] || toneInstructions.concise, `Job: ${jobTitle} at ${company}\n\nOriginal cover letter:\n${baseCoverLetter}`)
+  } catch { return baseCoverLetter }
+}
+
+// ─── Auto-Apply System ───
+
+// SMTP transporter — supports Gmail or cPanel (lazy init)
+let mailTransporter: nodemailer.Transporter | null = null
+function getMailer() {
+  if (!mailTransporter && SMTP_USER && SMTP_PASS) {
+    if (SMTP_HOST) {
+      // cPanel or custom SMTP
+      mailTransporter = nodemailer.createTransport({
+        host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE,
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+      })
+    } else {
+      // Gmail fallback
+      mailTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+      })
+    }
+  }
+  return mailTransporter
+}
+
+// Prepare an application plan for a single job
+async function handleAutoApplyPrepare(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { job, profile } = body
+  if (!job?.title) return json(res, 400, { error: 'job with title required' })
+
+  const rawData = job.raw_data || {}
+  const applicationType = rawData.application_type || 'unknown'
+
+  // Generate cover letter
+  let coverLetter = rawData.cover_letter || ''
+  if (!coverLetter && (OPENAI_KEY || GEMINI_KEY)) {
+    try {
+      coverLetter = await handleCoverLetterInternal(job, profile)
+    } catch { /* cover letter gen failed */ }
+  }
+
+  // Build apply plan based on type
+  const steps: { action: string; status: string; detail: string }[] = []
+  let emailDraft = null
+  let browserInstructions = null
+
+  if (applicationType === 'direct_email' && rawData.recruiter_email) {
+    steps.push({ action: 'generate_cover_letter', status: coverLetter ? 'done' : 'failed', detail: coverLetter ? 'Cover letter ready' : 'Failed to generate' })
+    steps.push({ action: 'compose_email', status: 'ready', detail: `To: ${rawData.recruiter_email}` })
+    steps.push({ action: 'attach_resume', status: 'ready', detail: 'resume.pdf' })
+    steps.push({ action: 'send_email', status: 'pending', detail: 'Awaiting send' })
+    emailDraft = {
+      to: rawData.recruiter_email,
+      subject: `Application for ${job.title} — ${SMTP_FROM_NAME}`,
+      body: `Dear ${job.company} Hiring Team,\n\n${coverLetter}\n\nBest regards,\n${SMTP_FROM_NAME}\nAI Systems Engineer\ngabrielalvin.jobs@gmail.com`,
+    }
+  } else if (applicationType === 'google_form' && rawData.external_form_url) {
+    steps.push({ action: 'open_form', status: 'pending', detail: rawData.external_form_url })
+    steps.push({ action: 'fill_form', status: 'pending', detail: 'Auto-fill name, email, resume link' })
+    steps.push({ action: 'submit_form', status: 'pending', detail: 'Submit application' })
+    browserInstructions = { url: rawData.external_form_url, type: 'google_form', fields_to_fill: { name: SMTP_FROM_NAME, email: SMTP_FROM_EMAIL || 'gabrielalvin.jobs@gmail.com', resume: 'https://neuralyx.dev/resume.pdf', cover_letter: coverLetter } }
+  } else if (applicationType === 'company_portal' && rawData.company_careers_url) {
+    steps.push({ action: 'navigate_portal', status: 'pending', detail: rawData.company_careers_url })
+    steps.push({ action: 'register_if_needed', status: 'pending', detail: rawData.requires_registration ? 'Registration required' : 'No registration' })
+    steps.push({ action: 'fill_application', status: 'pending', detail: 'Fill application form' })
+    steps.push({ action: 'submit', status: 'pending', detail: 'Submit application' })
+    browserInstructions = { url: rawData.company_careers_url, type: 'company_portal', fields_to_fill: { name: SMTP_FROM_NAME, email: SMTP_FROM_EMAIL || 'gabrielalvin.jobs@gmail.com', phone: '0951 540 8978', cover_letter: coverLetter }, requires_login: rawData.requires_registration || false }
+  } else if (applicationType === 'external_form' && rawData.external_form_url) {
+    steps.push({ action: 'open_form', status: 'pending', detail: rawData.external_form_url })
+    steps.push({ action: 'fill_form', status: 'pending', detail: 'Auto-fill application' })
+    steps.push({ action: 'submit_form', status: 'pending', detail: 'Submit' })
+    browserInstructions = { url: rawData.external_form_url, type: 'external_form', fields_to_fill: { name: SMTP_FROM_NAME, email: SMTP_FROM_EMAIL || 'gabrielalvin.jobs@gmail.com', cover_letter: coverLetter } }
+  } else {
+    // direct_apply or unknown — apply through the job board
+    steps.push({ action: 'open_job_page', status: 'pending', detail: job.url || 'No URL' })
+    steps.push({ action: 'click_apply', status: 'pending', detail: 'Click Apply/Easy Apply button' })
+    steps.push({ action: 'fill_form', status: 'pending', detail: 'Fill application form' })
+    steps.push({ action: 'submit', status: 'pending', detail: 'Submit application' })
+    browserInstructions = { url: job.url, type: 'direct_apply', fields_to_fill: { name: SMTP_FROM_NAME, email: SMTP_FROM_EMAIL || 'gabrielalvin.jobs@gmail.com', phone: '0951 540 8978', cover_letter: coverLetter }, requires_login: true }
+  }
+
+  // Build strategy plan
+  const strategy = buildApplicationStrategy(job)
+
+  // Generate channel-specific variants if multi-channel
+  const coverVariants: Record<string, string> = { primary: coverLetter }
+  if (strategy.variation_required && coverLetter) {
+    for (const sec of strategy.secondary) {
+      try {
+        coverVariants[sec.channel] = await generateChannelVariant(coverLetter, sec.tone as 'formal' | 'concise' | 'conversational', job.title, job.company)
+      } catch { coverVariants[sec.channel] = coverLetter }
+    }
+  }
+
+  json(res, 200, { application_type: applicationType, steps, cover_letter: coverLetter, cover_variants: coverVariants, email_draft: emailDraft, browser_instructions: browserInstructions, strategy })
+}
+
+// Internal cover letter generation (reuse existing logic)
+async function handleCoverLetterInternal(job: { title: string; company: string; description?: string }, profile?: { resume_text?: string; skills?: string[] }): Promise<string> {
+  const systemPrompt = `Write a concise, professional cover letter (3-4 paragraphs, max 350 words) for ${SMTP_FROM_NAME}, an AI Systems Engineer applying for ${job.title} at ${job.company}. Open with the company's pain point. Show metrics: 8+ years, 27+ projects, AI pipeline (90+ jobs/8 platforms/8 seconds). Close with a 30-60 day contribution plan. Plain text only.`
+  const userPrompt = `Job: ${job.title} at ${job.company}\nDescription: ${(job.description || '').slice(0, 1000)}\nSkills: ${profile?.skills?.join(', ') || 'Vue.js, TypeScript, Python, Docker, OpenAI, n8n, LangChain'}`
+  return await callAI(systemPrompt, userPrompt)
+}
+
+// Send application email via Gmail SMTP
+async function handleAutoApplySendEmail(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { to, subject, body: emailBody, attachments } = body
+  if (!to || !subject || !emailBody) return json(res, 400, { error: 'to, subject, body required' })
+
+  const mailer = getMailer()
+  if (!mailer) return json(res, 500, { error: 'Gmail SMTP not configured. Set GMAIL_USER and GMAIL_APP_PASSWORD env vars.' })
+
+  try {
+    const mailOptions: nodemailer.SendMailOptions = {
+      from: `"${SMTP_FROM_NAME}" <${SMTP_FROM_EMAIL}>`,
+      to, subject, text: emailBody,
+      attachments: attachments || [],
+    }
+
+    // Attach resume if exists
+    try {
+      await stat(join(UPLOADS_DIR, 'resume.pdf'))
+      mailOptions.attachments = [...(mailOptions.attachments as nodemailer.SendMailOptions['attachments'] || []), { filename: `${SMTP_FROM_NAME.replace(/\s+/g, '_')}_Resume.pdf`, path: join(UPLOADS_DIR, 'resume.pdf') }]
+    } catch { /* no resume file, skip attachment */ }
+
+    const info = await mailer.sendMail(mailOptions)
+    json(res, 200, { success: true, messageId: info.messageId, detail: `Email sent to ${to}` })
+  } catch (e) {
+    json(res, 500, { success: false, error: e instanceof Error ? e.message : 'Send failed' })
+  }
+}
+
+// Batch auto-apply: process multiple jobs sequentially
+async function handleAutoApplyBatch(req: IncomingMessage, res: ServerResponse) {
+  const body = JSON.parse(await readBody(req))
+  const { jobs, profile, mode } = body // jobs: array of job objects, mode: 'email_only' | 'all'
+  if (!jobs?.length) return json(res, 400, { error: 'jobs array required' })
+
+  const results: { job_id: string; title: string; status: string; method: string; detail: string }[] = []
+  const mailer = getMailer()
+
+  for (const job of jobs) {
+    const rawData = job.raw_data || {}
+    const appType = rawData.application_type || 'unknown'
+
+    // Only process email jobs in email_only mode
+    if (mode === 'email_only' && appType !== 'direct_email') {
+      results.push({ job_id: job.id, title: job.title, status: 'skipped', method: appType, detail: 'Not an email application' })
+      continue
+    }
+
+    if (appType === 'direct_email' && rawData.recruiter_email && mailer) {
+      try {
+        // Generate cover letter
+        let coverLetter = rawData.cover_letter || ''
+        if (!coverLetter) {
+          try { coverLetter = await handleCoverLetterInternal(job, profile) } catch { /* skip */ }
+        }
+
+        const emailBody = `Dear ${job.company} Hiring Team,\n\n${coverLetter}\n\nBest regards,\n${SMTP_FROM_NAME}\nAI Systems Engineer\ngabrielalvin.jobs@gmail.com`
+        const mailOptions: nodemailer.SendMailOptions = {
+          from: `"${SMTP_FROM_NAME}" <${SMTP_FROM_EMAIL}>`,
+          to: rawData.recruiter_email,
+          subject: `Application for ${job.title} — ${SMTP_FROM_NAME}`,
+          text: emailBody,
+        }
+        try {
+          await stat(join(UPLOADS_DIR, 'resume.pdf'))
+          mailOptions.attachments = [{ filename: `${SMTP_FROM_NAME.replace(/\s+/g, '_')}_Resume.pdf`, path: join(UPLOADS_DIR, 'resume.pdf') }]
+        } catch { /* no resume */ }
+
+        await mailer.sendMail(mailOptions)
+        results.push({ job_id: job.id, title: job.title, status: 'applied', method: 'direct_email', detail: `Email sent to ${rawData.recruiter_email}` })
+
+        // Throttle: 30s between emails
+        await new Promise(r => setTimeout(r, 30000))
+      } catch (e) {
+        results.push({ job_id: job.id, title: job.title, status: 'apply_failed', method: 'direct_email', detail: e instanceof Error ? e.message : 'Send failed' })
+      }
+    } else if (appType !== 'direct_email') {
+      // Browser-based apply — return instructions for the frontend/agent
+      results.push({ job_id: job.id, title: job.title, status: 'needs_browser', method: appType, detail: `Requires browser automation: ${rawData.company_careers_url || rawData.external_form_url || job.url}` })
+    } else {
+      results.push({ job_id: job.id, title: job.title, status: 'skipped', method: appType, detail: 'No recruiter email found' })
+    }
+  }
+
+  json(res, 200, { results, total: jobs.length, applied: results.filter(r => r.status === 'applied').length, failed: results.filter(r => r.status === 'apply_failed').length, needs_browser: results.filter(r => r.status === 'needs_browser').length })
 }
 
 const server = createServer(async (req, res) => {
@@ -1309,6 +1683,22 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/jobs/nurture' && req.method === 'POST') {
     return handleNurture(req, res)
+  }
+
+  // Strategy Engine
+  if (url.pathname === '/api/jobs/strategy' && req.method === 'POST') {
+    return handleStrategyPlan(req, res)
+  }
+
+  // Auto-Apply endpoints
+  if (url.pathname === '/api/jobs/auto-apply/prepare' && req.method === 'POST') {
+    return handleAutoApplyPrepare(req, res)
+  }
+  if (url.pathname === '/api/jobs/auto-apply/send-email' && req.method === 'POST') {
+    return handleAutoApplySendEmail(req, res)
+  }
+  if (url.pathname === '/api/jobs/auto-apply/batch' && req.method === 'POST') {
+    return handleAutoApplyBatch(req, res)
   }
 
   // Phantom chat — webhook with correct HMAC-SHA256 signature

@@ -13,8 +13,16 @@ export interface FillResult {
     role_type?: string
     company_bucket?: string
     company_type_detail?: string
+    application_type?: string
+    apply_channels?: { channel: string; status: string; detail: string; target?: string }[]
+    expected_filtering_layers?: string[]
     apply_method?: string
     requires_registration?: boolean
+    recruiter_email?: string
+    inferred_company_email?: string
+    company_careers_url?: string
+    external_form_url?: string
+    ats_system?: string
     work_arrangement?: string
     country?: string
     match_score?: number
@@ -65,8 +73,16 @@ export function buildUpdatePayload(result: FillResult): Record<string, unknown> 
       role_type: d.role_type || null,
       company_bucket: d.company_bucket || null,
       company_type_detail: d.company_type_detail || null,
+      application_type: d.application_type || 'unknown',
+      apply_channels: d.apply_channels || [{ channel: 'job_board', status: 'pending', detail: 'Apply via job board' }],
+      expected_filtering_layers: d.expected_filtering_layers || ['resume_screen', 'interview'],
       apply_method: d.apply_method || null,
       requires_registration: d.requires_registration || false,
+      recruiter_email: d.recruiter_email || null,
+      inferred_company_email: d.inferred_company_email || null,
+      company_careers_url: d.company_careers_url || null,
+      external_form_url: d.external_form_url || null,
+      ats_system: d.ats_system || 'unknown',
       work_arrangement: d.work_arrangement || null,
       country: d.country || null,
       skill_matches: d.skill_matches || [],

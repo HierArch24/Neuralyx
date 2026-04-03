@@ -6,6 +6,10 @@
       "headers": {
         "Authorization": "Bearer sb_publishable_eBr6t1s9iRPv6IeLhDl2Pg_MjSBgFJ0"
       }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--browser", "msedge"]
     }
   }
 }
