@@ -1,9 +1,37 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const sidebarOpen = ref(true)
+
+// Phantom Chat
+const phantomOpen = ref(false)
+const phantomStatus = ref<'online' | 'offline'>('offline')
+const phantomMessages = ref<{ role: 'user' | 'phantom'; text: string; time: string }[]>([])
+const phantomInput = ref('')
+const phantomSending = ref(false)
+const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+
+onMounted(async () => {
+  try {
+    const r = await fetch(`${mcpUrl}/api/phantom/health`, { signal: AbortSignal.timeout(5000) })
+    if (r.ok) { const d = await r.json(); phantomStatus.value = d.status === 'ok' ? 'online' : 'offline' }
+  } catch { /* offline */ }
+})
+
+async function sendPhantomChat() {
+  if (!phantomInput.value.trim() || phantomSending.value) return
+  const msg = phantomInput.value.trim()
+  phantomMessages.value.push({ role: 'user', text: msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+  phantomInput.value = ''; phantomSending.value = true
+  try {
+    const r = await fetch(`${mcpUrl}/api/phantom/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }), signal: AbortSignal.timeout(60000) })
+    const d = r.ok ? await r.json() : null
+    phantomMessages.value.push({ role: 'phantom', text: d?.response || d?.message || 'Not responding.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+  } catch { phantomMessages.value.push({ role: 'phantom', text: 'Could not reach Phantom.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }) }
+  phantomSending.value = false
+}
 
 const sidebarLinks = [
   { name: 'admin-jobs', label: 'Dashboard', icon: '📊' },
@@ -102,9 +130,14 @@ const sidebarLinks = [
           </button>
           <h1 class="text-lg font-semibold text-white">Job Application Pipeline</h1>
         </div>
-        <div class="flex items-center gap-2 text-xs text-gray-500">
-          <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-          AI Agent Ready
+        <div class="flex items-center gap-3">
+          <button @click="phantomOpen = !phantomOpen"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+            :class="phantomOpen ? 'bg-cyber-purple/20 text-cyber-purple' : 'hover:bg-neural-700 text-gray-400 hover:text-white'">
+            <span>👻</span>
+            <span class="text-xs font-medium">Phantom</span>
+            <span class="w-2 h-2 rounded-full" :class="phantomStatus === 'online' ? 'bg-green-400' : 'bg-red-400'" />
+          </button>
         </div>
       </header>
 
@@ -112,5 +145,36 @@ const sidebarLinks = [
         <RouterView />
       </main>
     </div>
+
+    <!-- Phantom Chat Slide Panel -->
+    <Transition name="slide">
+      <div v-if="phantomOpen" class="fixed top-0 right-0 bottom-0 w-80 bg-neural-800 border-l border-neural-600 z-50 flex flex-col shadow-2xl">
+        <div class="h-14 px-4 flex items-center justify-between border-b border-neural-600 shrink-0">
+          <div class="flex items-center gap-2"><span>👻</span><span class="text-sm font-semibold text-white">Phantom</span><span class="w-2 h-2 rounded-full" :class="phantomStatus === 'online' ? 'bg-green-400 animate-pulse' : 'bg-red-400'" /></div>
+          <button @click="phantomOpen = false" class="p-1.5 rounded-lg hover:bg-neural-700 text-gray-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-3 space-y-2">
+          <div v-if="phantomMessages.length === 0" class="text-center py-12"><div class="text-3xl mb-2">👻</div><p class="text-xs text-gray-500">{{ phantomStatus === 'online' ? 'Chat with Phantom' : 'Phantom offline' }}</p></div>
+          <div v-for="(msg, idx) in phantomMessages" :key="idx" class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+            <div class="max-w-[85%] px-3 py-2 rounded-lg text-xs leading-relaxed" :class="msg.role === 'user' ? 'bg-cyber-purple/20 text-white' : 'bg-neural-700 text-gray-300'">
+              <p class="whitespace-pre-wrap">{{ msg.text }}</p><p class="text-[8px] mt-1 opacity-50">{{ msg.time }}</p>
+            </div>
+          </div>
+          <div v-if="phantomSending" class="flex justify-start"><div class="px-3 py-2 rounded-lg bg-neural-700 text-gray-400 text-xs flex items-center gap-2"><svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Thinking...</div></div>
+        </div>
+        <div class="p-3 border-t border-neural-600 shrink-0">
+          <form @submit.prevent="sendPhantomChat" class="flex gap-2">
+            <input v-model="phantomInput" :placeholder="phantomStatus === 'online' ? 'Message...' : 'Offline'" :disabled="phantomStatus !== 'online'" class="flex-1 px-3 py-2 bg-neural-900 border border-neural-600 rounded-lg text-white text-xs placeholder-gray-500 focus:border-cyber-purple focus:outline-none disabled:opacity-30" />
+            <button type="submit" :disabled="!phantomInput.trim() || phantomSending || phantomStatus !== 'online'" class="px-3 py-2 bg-cyber-purple text-white rounded-lg text-xs hover:bg-cyber-purple/80 disabled:opacity-30"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg></button>
+          </form>
+        </div>
+      </div>
+    </Transition>
+    <div v-if="phantomOpen" class="fixed inset-0 bg-black/30 z-40" @click="phantomOpen = false" />
   </div>
 </template>
+
+<style scoped>
+.slide-enter-active, .slide-leave-active { transition: transform 0.25s ease; }
+.slide-enter-from, .slide-leave-to { transform: translateX(100%); }
+</style>
