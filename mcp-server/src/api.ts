@@ -1311,6 +1311,33 @@ const server = createServer(async (req, res) => {
     return handleNurture(req, res)
   }
 
+  // Phantom chat — send message to Phantom
+  if (url.pathname === '/api/phantom/chat' && req.method === 'POST') {
+    try {
+      const body = await readBody(req)
+      let pRes
+      for (const host of ['http://neuralyx-phantom:3100', 'http://host.docker.internal:3100', 'http://172.17.0.1:3100']) {
+        try { pRes = await fetch(`${host}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(60000) }); if (pRes.ok) break } catch { continue }
+      }
+      if (pRes && pRes.ok) { const data = await pRes.json(); return json(res, 200, data) }
+      return json(res, 502, { error: 'Phantom unreachable' })
+    } catch (e: unknown) { return json(res, 500, { error: e instanceof Error ? e.message : 'Chat failed' }) }
+  }
+
+  // Phantom health proxy
+  if (url.pathname === '/api/phantom/health' && req.method === 'GET') {
+    try {
+      // Try Docker network first, then host.docker.internal (Windows/Mac), then localhost
+      let pRes
+      for (const host of ['http://neuralyx-phantom:3100', 'http://host.docker.internal:3100', 'http://172.17.0.1:3100']) {
+        try { pRes = await fetch(`${host}/health`, { signal: AbortSignal.timeout(2000) }); if (pRes.ok) break } catch { continue }
+      }
+      if (!pRes) throw new Error('unreachable')
+      if (pRes.ok) { const data = await pRes.json(); return json(res, 200, data) }
+      return json(res, 502, { status: 'offline' })
+    } catch { return json(res, 502, { status: 'offline' }) }
+  }
+
   // FAISS semantic matching (proxy to AI service)
   if (url.pathname.startsWith('/api/semantic/') && req.method === 'POST') {
     try {

@@ -5,35 +5,36 @@ import { useAdminStore } from '@/stores/admin'
 const admin = useAdminStore()
 
 interface SessionReport {
-  id: string
-  version: string
-  date: string
-  title: string
-  summary: string
-  agents_used: string[]
-  jobs_found: number
-  jobs_scored: number
-  jobs_matched: number
-  apis_called: string[]
-  duration_mins: number
-  actions: string[]
-  status: 'completed' | 'running' | 'failed'
+  id: string; version: string; date: string; title: string; summary: string
+  agents_used: string[]; jobs_found: number; jobs_scored: number; jobs_matched: number
+  apis_called: string[]; duration_mins: number; actions: string[]
+  status: 'completed' | 'running' | 'failed'; period: string
 }
 
 const reports = ref<SessionReport[]>([])
 const showDetail = ref(false)
 const detailReport = ref<SessionReport | null>(null)
-const phantomHealth = ref<Record<string, unknown> | null>(null)
 const phantomStatus = ref<'online' | 'offline' | 'checking'>('checking')
+const phantomHealth = ref<Record<string, unknown> | null>(null)
+
+// Chat
+const chatMessages = ref<{ role: 'user' | 'phantom'; text: string; time: string }[]>([])
+const chatInput = ref('')
+const chatSending = ref(false)
+
+// Report generation
+const generating = ref(false)
+const genPeriod = ref('24h')
+
+const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
 
 onMounted(async () => {
-  // Check Phantom service health
   try {
-    const res = await fetch('http://localhost:3100/health', { signal: AbortSignal.timeout(3000) })
-    if (res.ok) { phantomHealth.value = await res.json(); phantomStatus.value = 'online' }
+    const res = await fetch(`${mcpUrl}/api/phantom/health`, { signal: AbortSignal.timeout(5000) })
+    if (res.ok) { const d = await res.json(); if (d.status === 'ok') { phantomHealth.value = d; phantomStatus.value = 'online' } else phantomStatus.value = 'offline' }
     else phantomStatus.value = 'offline'
   } catch { phantomStatus.value = 'offline' }
-  // Load reports from agent logs
+
   admin.fetchJobAgentLogs()
   admin.fetchJobListings()
   admin.fetchJobApplications()
@@ -41,89 +42,107 @@ onMounted(async () => {
 })
 
 function buildReports() {
-  // Generate session reports from agent logs grouped by run_id
   const runs = new Map<string, any[]>()
   for (const log of admin.jobAgentLogs) {
     if (!runs.has(log.run_id)) runs.set(log.run_id, [])
     runs.get(log.run_id)!.push(log)
   }
-
-  const builtReports: SessionReport[] = []
-  let version = 1
+  const built: SessionReport[] = []
+  let v = 1
   for (const [runId, logs] of runs) {
-    const firstLog = logs[0] as any
-    const lastLog = logs[logs.length - 1] as any
-    const found = logs.reduce((s: number, l: { jobs_found: number }) => s + l.jobs_found, 0)
-    const matched = logs.reduce((s: number, l: { jobs_matched: number }) => s + l.jobs_matched, 0)
-
-    builtReports.push({
-      id: runId,
-      version: `v${version++}.0`,
-      date: firstLog.created_at,
+    const first = logs[0] as any
+    built.push({
+      id: runId, version: `v${v++}.0`, date: first.created_at,
       title: `Agent Run ${runId.slice(0, 8)}`,
       summary: logs.map((l: any) => l.message).filter(Boolean).join('. '),
       agents_used: [...new Set(logs.map((l: any) => l.step))] as string[],
-      jobs_found: found,
-      jobs_scored: matched,
-      jobs_matched: matched,
-      apis_called: ['JSearch', 'Himalayas', 'RemoteOK', 'Arbeitnow', 'HackerNews', 'LinkedIn'],
-      duration_mins: lastLog.completed_at ? Math.round((new Date(lastLog.completed_at).getTime() - new Date(firstLog.started_at).getTime()) / 60000) : 0,
-      actions: logs.map((l: any) => `${l.step}: ${l.message || l.status}`),
-      status: logs.every((l: any) => l.status === 'completed') ? 'completed' as const : logs.some((l: any) => l.status === 'running') ? 'running' as const : 'failed' as const,
-    })
-  }
-
-  // Add a daily summary report
-  const today = new Date().toISOString().split('T')[0]
-  const todayJobs = admin.jobListings.filter(j => j.created_at.startsWith(today)).length
-  const todayApps = admin.jobApplications.filter(a => a.created_at.startsWith(today)).length
-  if (todayJobs > 0 || todayApps > 0 || builtReports.length === 0) {
-    builtReports.unshift({
-      id: `daily-${today}`,
-      version: `v${version}.0`,
-      date: new Date().toISOString(),
-      title: `Daily Report — ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
-      summary: `${admin.jobListings.length} total jobs in pipeline. ${todayJobs} new today. ${admin.jobApplications.length} applications tracked. ${admin.jobListings.filter(j => j.match_score !== null).length} jobs scored.`,
-      agents_used: ['Scout', 'Classifier', 'Matcher', 'Research', 'Writer', 'Nurture'],
-      jobs_found: admin.jobListings.length,
-      jobs_scored: admin.jobListings.filter(j => j.match_score !== null).length,
-      jobs_matched: admin.jobListings.filter(j => (j.match_score || 0) >= 60).length,
-      apis_called: ['JSearch', 'Himalayas', 'RemoteOK', 'Remotive', 'Arbeitnow', 'HackerNews', 'LinkedIn', 'FAISS', 'GPT/Gemini'],
+      jobs_found: logs.reduce((s: number, l: any) => s + l.jobs_found, 0),
+      jobs_scored: logs.reduce((s: number, l: any) => s + l.jobs_matched, 0),
+      jobs_matched: logs.reduce((s: number, l: any) => s + l.jobs_matched, 0),
+      apis_called: ['JSearch', 'Himalayas', 'RemoteOK', 'Arbeitnow', 'HN', 'LinkedIn'],
       duration_mins: 0,
-      actions: [`Total jobs: ${admin.jobListings.length}`, `Scored: ${admin.jobListings.filter(j => j.match_score !== null).length}`, `Applications: ${admin.jobApplications.length}`],
-      status: 'completed',
+      actions: logs.map((l: any) => `${l.step}: ${l.message || l.status}`),
+      status: logs.every((l: any) => l.status === 'completed') ? 'completed' as const : 'failed' as const,
+      period: 'run',
     })
   }
+  // Daily summary
+  const today = new Date().toISOString().split('T')[0]
+  built.unshift({
+    id: `daily-${today}`, version: `v${v}.0`, date: new Date().toISOString(),
+    title: `Daily Report — ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
+    summary: `${admin.jobListings.length} total jobs. ${admin.jobListings.filter(j => j.match_score !== null).length} scored. ${admin.jobApplications.length} applications.`,
+    agents_used: ['Scout', 'Classifier', 'Matcher', 'Research', 'Writer', 'Nurture'],
+    jobs_found: admin.jobListings.length, jobs_scored: admin.jobListings.filter(j => j.match_score !== null).length,
+    jobs_matched: admin.jobListings.filter(j => (j.match_score || 0) >= 60).length,
+    apis_called: ['JSearch', 'Himalayas', 'RemoteOK', 'Remotive', 'Arbeitnow', 'HN', 'LinkedIn', 'FAISS', 'GPT/Gemini'],
+    duration_mins: 0, actions: [`Jobs: ${admin.jobListings.length}`, `Scored: ${admin.jobListings.filter(j => j.match_score !== null).length}`, `Apps: ${admin.jobApplications.length}`],
+    status: 'completed', period: '24h',
+  })
+  reports.value = built.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+}
 
-  reports.value = builtReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+async function sendChat() {
+  if (!chatInput.value.trim() || chatSending.value) return
+  const msg = chatInput.value.trim()
+  chatMessages.value.push({ role: 'user', text: msg, time: new Date().toLocaleTimeString() })
+  chatInput.value = ''
+  chatSending.value = true
+  try {
+    const res = await fetch(`${mcpUrl}/api/phantom/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }), signal: AbortSignal.timeout(60000),
+    })
+    if (res.ok) {
+      const d = await res.json()
+      chatMessages.value.push({ role: 'phantom', text: d.response || d.message || JSON.stringify(d), time: new Date().toLocaleTimeString() })
+    } else {
+      chatMessages.value.push({ role: 'phantom', text: 'Phantom is not responding. Make sure it is running (port 3100).', time: new Date().toLocaleTimeString() })
+    }
+  } catch {
+    chatMessages.value.push({ role: 'phantom', text: 'Could not reach Phantom. Check if containers are running.', time: new Date().toLocaleTimeString() })
+  }
+  chatSending.value = false
+}
+
+async function generateReport() {
+  generating.value = true
+  await sendChatInternal(`Generate a ${genPeriod.value === '24h' ? 'daily' : genPeriod.value === '1w' ? 'weekly' : 'monthly'} session report. Include: jobs found, jobs scored, applications tracked, AI agents used, API calls made, key metrics. Format as a structured report.`)
+  generating.value = false
+  buildReports()
+}
+
+async function sendChatInternal(msg: string) {
+  try {
+    const res = await fetch(`${mcpUrl}/api/phantom/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }), signal: AbortSignal.timeout(60000),
+    })
+    if (res.ok) return await res.json()
+  } catch { /* phantom offline */ }
+  return null
+}
+
+function deleteReport(r: SessionReport) {
+  if (confirm(`Delete report ${r.version}?`)) {
+    reports.value = reports.value.filter(rep => rep.id !== r.id)
+  }
 }
 
 function viewReport(r: SessionReport) { detailReport.value = r; showDetail.value = true }
 
 function downloadWord(r: SessionReport) {
-  const content = `NEURALYX PHANTOM SESSION REPORT\n${'='.repeat(40)}\n\nVersion: ${r.version}\nDate: ${new Date(r.date).toLocaleDateString()}\nTitle: ${r.title}\nStatus: ${r.status}\n\nSUMMARY\n${'-'.repeat(20)}\n${r.summary}\n\nAGENTS USED\n${'-'.repeat(20)}\n${r.agents_used.join(', ')}\n\nMETRICS\n${'-'.repeat(20)}\nJobs Found: ${r.jobs_found}\nJobs Scored: ${r.jobs_scored}\nJobs Matched: ${r.jobs_matched}\nDuration: ${r.duration_mins} minutes\n\nAPIs CALLED\n${'-'.repeat(20)}\n${r.apis_called.join(', ')}\n\nACTIONS\n${'-'.repeat(20)}\n${r.actions.join('\n')}\n\n${'='.repeat(40)}\nGenerated by NEURALYX AI Agent System`
+  const content = `NEURALYX PHANTOM SESSION REPORT\n${'='.repeat(40)}\n\nVersion: ${r.version}\nDate: ${new Date(r.date).toLocaleDateString()}\nPeriod: ${r.period}\nTitle: ${r.title}\n\nSUMMARY\n${r.summary}\n\nMETRICS\nJobs Found: ${r.jobs_found}\nJobs Scored: ${r.jobs_scored}\nJobs Matched: ${r.jobs_matched}\n\nAGENTS: ${r.agents_used.join(', ')}\nAPIs: ${r.apis_called.join(', ')}\n\nACTIONS\n${r.actions.join('\n')}\n\nGenerated by NEURALYX Phantom`
   const blob = new Blob([content], { type: 'application/msword' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = `phantom-report-${r.version}-${r.id.slice(0, 8)}.doc`
-  a.click(); URL.revokeObjectURL(url)
-}
-
-function downloadPDF(r: SessionReport) {
-  // Generate printable HTML and trigger print dialog (saves as PDF)
-  const html = `<html><head><title>Phantom Report ${r.version}</title><style>body{font-family:Arial;padding:40px;color:#333}h1{color:#6b46c1}h2{color:#555;border-bottom:1px solid #ddd;padding-bottom:5px}table{width:100%;border-collapse:collapse;margin:10px 0}td{padding:5px 10px;border:1px solid #eee}.badge{background:#f0f0ff;padding:2px 8px;border-radius:4px;font-size:12px}</style></head><body><h1>NEURALYX Phantom Report</h1><p><strong>Version:</strong> ${r.version} | <strong>Date:</strong> ${new Date(r.date).toLocaleDateString()} | <strong>Status:</strong> ${r.status}</p><h2>Summary</h2><p>${r.summary}</p><h2>Metrics</h2><table><tr><td>Jobs Found</td><td><strong>${r.jobs_found}</strong></td><td>Jobs Scored</td><td><strong>${r.jobs_scored}</strong></td></tr><tr><td>Jobs Matched</td><td><strong>${r.jobs_matched}</strong></td><td>Duration</td><td><strong>${r.duration_mins}min</strong></td></tr></table><h2>Agents Used</h2><p>${r.agents_used.map(a => `<span class="badge">${a}</span>`).join(' ')}</p><h2>APIs Called</h2><p>${r.apis_called.map(a => `<span class="badge">${a}</span>`).join(' ')}</p><h2>Actions Log</h2><ul>${r.actions.map(a => `<li>${a}</li>`).join('')}</ul><hr><p style="color:#999;font-size:11px">Generated by NEURALYX AI Agent System — ${new Date().toLocaleString()}</p></body></html>`
-  const w = window.open('', '_blank')
-  if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+  a.download = `phantom-${r.version}-${r.id.slice(0, 8)}.doc`; a.click()
 }
 
 function timeAgo(d: string) {
-  const diff = Date.now() - new Date(d).getTime()
-  const hrs = Math.floor(diff / 3600000)
+  const hrs = Math.floor((Date.now() - new Date(d).getTime()) / 3600000)
   if (hrs < 1) return 'Just now'
   if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}d ago`
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${Math.floor(hrs / 24)}d ago`
 }
 </script>
 
@@ -131,114 +150,130 @@ function timeAgo(d: string) {
   <div>
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h2 class="text-2xl font-bold text-white">Phantom Reports</h2>
-        <p class="text-sm text-gray-400 mt-1">AI agent session reports — auto-generated every 24 hours</p>
+        <h2 class="text-2xl font-bold text-white">Phantom Report</h2>
+        <p class="text-sm text-gray-400 mt-1">AI co-worker — session tracking, analytics, and communication</p>
       </div>
       <div class="flex items-center gap-3">
-        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" :class="phantomStatus === 'online' ? 'bg-green-500/15 text-green-400' : phantomStatus === 'checking' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-red-500/15 text-red-400'">
-          <span class="w-2 h-2 rounded-full" :class="phantomStatus === 'online' ? 'bg-green-400 animate-pulse' : phantomStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'" />
-          <span class="text-xs font-medium">Phantom {{ phantomStatus === 'online' ? 'Online' : phantomStatus === 'checking' ? 'Checking...' : 'Offline' }}</span>
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" :class="phantomStatus === 'online' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">
+          <span class="w-2 h-2 rounded-full" :class="phantomStatus === 'online' ? 'bg-green-400 animate-pulse' : 'bg-red-400'" />
+          <span class="text-xs font-medium">{{ phantomStatus === 'online' ? 'Online' : 'Offline' }}</span>
+          <span v-if="phantomHealth" class="text-[9px] text-gray-500 ml-1">v{{ (phantomHealth as any).version }}</span>
         </div>
-        <span class="text-xs text-gray-500">{{ reports.length }} reports</span>
       </div>
     </div>
 
-    <!-- Phantom Setup (when offline) -->
+    <!-- Phantom Offline -->
     <div v-if="phantomStatus === 'offline'" class="glass-dark rounded-xl p-4 border border-red-500/20 mb-6">
-      <h3 class="text-xs text-red-400 font-semibold uppercase tracking-wider mb-2">Phantom Not Running</h3>
-      <p class="text-xs text-gray-400 mb-3">Start Phantom to enable AI co-worker features (session reports, auto-monitoring, self-evolving agent).</p>
-      <div class="bg-neural-800/50 rounded-lg p-3 font-mono text-[11px] text-gray-300 space-y-1">
-        <p class="text-gray-500"># Start Phantom (from project root)</p>
-        <p>cd phantom</p>
-        <p>docker compose up -d</p>
-        <p class="text-gray-500"># Check health</p>
-        <p>curl http://localhost:3100/health</p>
-      </div>
-      <p class="text-[9px] text-gray-600 mt-2">Requires: Anthropic API key in phantom/.env. Phantom runs on port 3100 with Qdrant (vector memory) + Ollama (embeddings).</p>
+      <h3 class="text-xs text-red-400 font-semibold uppercase mb-2">Phantom Not Running</h3>
+      <p class="text-xs text-gray-400 mb-2">Start: <code class="bg-neural-800 px-2 py-0.5 rounded text-[10px]">cd phantom && docker compose up -d</code></p>
     </div>
 
-    <!-- Registration Checklist -->
-    <div class="glass-dark rounded-xl p-4 border border-yellow-500/20 mb-6">
-      <h3 class="text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-3">Platform Registration Checklist</h3>
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <div v-for="p in [
-          { name: 'JobStreet PH', url: 'ph.jobstreet.com', done: false },
-          { name: 'Kalibrr', url: 'kalibrr.com', done: false },
-          { name: 'OnlineJobs.ph', url: 'onlinejobs.ph', done: false },
-          { name: 'Bossjob', url: 'bossjob.ph', done: false },
-          { name: 'VirtualStaff.ph', url: 'virtualstaff.ph', done: false },
-          { name: 'Mynimo', url: 'mynimo.com', done: false },
-          { name: 'BruntWork', url: 'bruntworkcareers.co', done: false },
-          { name: 'PhilJobNet', url: 'philjobnet.gov.ph', done: true },
-          { name: 'Upwork', url: 'upwork.com', done: false },
-          { name: 'Indeed PH', url: 'ph.indeed.com', done: false },
-          { name: 'LinkedIn', url: 'linkedin.com', done: false },
-          { name: 'Glassdoor', url: 'glassdoor.com', done: false },
-        ]" :key="p.name" class="flex items-center gap-2 px-2 py-1.5 rounded bg-neural-800/50">
-          <span class="w-3 h-3 rounded-full border" :class="p.done ? 'bg-green-500 border-green-500' : 'border-gray-600'" />
-          <div class="min-w-0">
-            <p class="text-[10px] text-white truncate">{{ p.name }}</p>
-            <p class="text-[8px] text-gray-600">{{ p.url }}</p>
+    <div class="grid lg:grid-cols-3 gap-5">
+      <!-- Left: Chat with Phantom -->
+      <div class="lg:col-span-1 glass-dark rounded-xl border border-neural-700/50 flex flex-col" style="height: 500px">
+        <div class="px-4 py-3 border-b border-neural-700/50 flex items-center gap-2">
+          <span>👻</span>
+          <h3 class="text-sm font-semibold text-white">Chat with Phantom</h3>
+        </div>
+        <div class="flex-1 overflow-y-auto p-3 space-y-2">
+          <div v-if="chatMessages.length === 0" class="text-center py-8 text-gray-600 text-xs">
+            Send a message to your AI co-worker
+          </div>
+          <div v-for="(msg, idx) in chatMessages" :key="idx"
+            class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+            <div class="max-w-[85%] px-3 py-2 rounded-lg text-xs leading-relaxed"
+              :class="msg.role === 'user' ? 'bg-cyber-purple/20 text-white' : 'bg-neural-700/50 text-gray-300'">
+              <p class="whitespace-pre-wrap">{{ msg.text }}</p>
+              <p class="text-[8px] mt-1" :class="msg.role === 'user' ? 'text-cyber-purple/50' : 'text-gray-600'">{{ msg.time }}</p>
+            </div>
+          </div>
+          <div v-if="chatSending" class="flex justify-start">
+            <div class="px-3 py-2 rounded-lg bg-neural-700/50 text-gray-400 text-xs flex items-center gap-2">
+              <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              Thinking...
+            </div>
           </div>
         </div>
+        <div class="p-3 border-t border-neural-700/50">
+          <form @submit.prevent="sendChat" class="flex gap-2">
+            <input v-model="chatInput" placeholder="Message Phantom..." :disabled="phantomStatus !== 'online'"
+              class="flex-1 px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs placeholder-gray-500 focus:border-cyber-purple focus:outline-none" />
+            <button type="submit" :disabled="!chatInput.trim() || chatSending || phantomStatus !== 'online'"
+              class="px-3 py-2 bg-cyber-purple text-white rounded-lg text-xs hover:bg-cyber-purple/80 disabled:opacity-30">Send</button>
+          </form>
+        </div>
       </div>
-      <p class="text-[9px] text-gray-500 mt-2">Email: gabrielalvin.jobs@gmail.com | Register with your resume details</p>
-    </div>
 
-    <!-- Reports Table -->
-    <div v-if="reports.length === 0" class="text-center py-16 glass-dark rounded-xl border border-neural-700/50">
-      <div class="text-4xl mb-3">👻</div>
-      <h3 class="text-lg font-semibold text-white mb-2">No reports yet</h3>
-      <p class="text-gray-500 text-sm">Run the AI Agent to generate your first session report.</p>
-    </div>
+      <!-- Right: Reports -->
+      <div class="lg:col-span-2 space-y-5">
+        <!-- Generate Report -->
+        <div class="glass-dark rounded-xl p-4 border border-neural-700/50 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <select v-model="genPeriod" class="px-3 py-1.5 bg-neural-800 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none">
+              <option value="24h">Daily Report</option>
+              <option value="1w">Weekly Report</option>
+              <option value="1m">Monthly Report</option>
+            </select>
+            <button @click="generateReport" :disabled="generating || phantomStatus !== 'online'"
+              class="px-4 py-1.5 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5">
+              <svg v-if="!generating" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              {{ generating ? 'Generating...' : 'Generate Report' }}
+            </button>
+          </div>
+          <button @click="buildReports" class="p-1.5 rounded-lg hover:bg-neural-600 text-gray-500 hover:text-white transition-colors" title="Refresh">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          </button>
+        </div>
 
-    <div v-else class="glass-dark rounded-xl overflow-hidden border border-neural-700/50">
-      <table class="w-full text-sm">
-        <thead class="bg-neural-700/40">
-          <tr>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Version</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Report</th>
-            <th class="text-center px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Found</th>
-            <th class="text-center px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Scored</th>
-            <th class="text-center px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Matched</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Agents</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Status</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Date</th>
-            <th class="text-right px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="r in reports" :key="r.id" class="border-t border-neural-700/30 hover:bg-neural-700/20 transition-colors cursor-pointer" @click="viewReport(r)">
-            <td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-cyber-purple/20 text-cyber-purple text-[10px] font-mono font-bold">{{ r.version }}</span></td>
-            <td class="px-4 py-3">
-              <p class="text-xs text-white font-medium">{{ r.title }}</p>
-              <p class="text-[10px] text-gray-500 truncate max-w-[250px]">{{ r.summary }}</p>
-            </td>
-            <td class="px-4 py-3 text-center text-xs text-white">{{ r.jobs_found }}</td>
-            <td class="px-4 py-3 text-center text-xs text-yellow-400">{{ r.jobs_scored }}</td>
-            <td class="px-4 py-3 text-center text-xs text-green-400">{{ r.jobs_matched }}</td>
-            <td class="px-4 py-3"><span class="text-[10px] text-gray-400">{{ r.agents_used.length }} agents</span></td>
-            <td class="px-4 py-3">
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize"
-                :class="r.status === 'completed' ? 'bg-green-500/15 text-green-400' : r.status === 'running' ? 'bg-blue-500/15 text-blue-400' : 'bg-red-500/15 text-red-400'">{{ r.status }}</span>
-            </td>
-            <td class="px-4 py-3 text-[10px] text-gray-500">{{ timeAgo(r.date) }}</td>
-            <td class="px-4 py-3 text-right" @click.stop>
-              <div class="flex items-center justify-end gap-1">
-                <button @click="viewReport(r)" class="p-1.5 rounded hover:bg-neural-600 text-gray-500 hover:text-white transition-colors" title="View">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                </button>
-                <button @click="downloadWord(r)" class="p-1.5 rounded hover:bg-neural-600 text-gray-500 hover:text-blue-400 transition-colors" title="Download Word">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                </button>
-                <button @click="downloadPDF(r)" class="p-1.5 rounded hover:bg-neural-600 text-gray-500 hover:text-red-400 transition-colors" title="View as PDF">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <!-- Reports Table -->
+        <div v-if="reports.length === 0" class="text-center py-12 glass-dark rounded-xl border border-neural-700/50">
+          <div class="text-3xl mb-2">👻</div>
+          <p class="text-gray-500 text-sm">No reports yet. Generate one or run the AI agent.</p>
+        </div>
+
+        <div v-else class="glass-dark rounded-xl overflow-hidden border border-neural-700/50">
+          <table class="w-full text-sm">
+            <thead class="bg-neural-700/40">
+              <tr>
+                <th class="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Version</th>
+                <th class="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Report</th>
+                <th class="text-center px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Period</th>
+                <th class="text-center px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Found</th>
+                <th class="text-center px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Matched</th>
+                <th class="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Date</th>
+                <th class="text-right px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in reports" :key="r.id" class="border-t border-neural-700/30 hover:bg-neural-700/20 transition-colors cursor-pointer" @click="viewReport(r)">
+                <td class="px-4 py-2.5"><span class="px-2 py-0.5 rounded bg-cyber-purple/20 text-cyber-purple text-[10px] font-mono font-bold">{{ r.version }}</span></td>
+                <td class="px-4 py-2.5">
+                  <p class="text-xs text-white font-medium">{{ r.title }}</p>
+                  <p class="text-[10px] text-gray-500 truncate max-w-[200px]">{{ r.summary }}</p>
+                </td>
+                <td class="px-4 py-2.5 text-center"><span class="px-2 py-0.5 rounded text-[10px] bg-neural-700/50 text-gray-300">{{ r.period }}</span></td>
+                <td class="px-4 py-2.5 text-center text-xs text-white">{{ r.jobs_found }}</td>
+                <td class="px-4 py-2.5 text-center text-xs text-green-400">{{ r.jobs_matched }}</td>
+                <td class="px-4 py-2.5 text-[10px] text-gray-500">{{ timeAgo(r.date) }}</td>
+                <td class="px-4 py-2.5 text-right" @click.stop>
+                  <div class="flex items-center justify-end gap-0.5">
+                    <button @click="viewReport(r)" class="p-1 rounded hover:bg-neural-600 text-gray-500 hover:text-white" title="View">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    </button>
+                    <button @click="downloadWord(r)" class="p-1 rounded hover:bg-neural-600 text-gray-500 hover:text-blue-400" title="Download">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /></svg>
+                    </button>
+                    <button @click="deleteReport(r)" class="p-1 rounded hover:bg-red-900/30 text-gray-500 hover:text-red-400" title="Delete">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- Detail Modal -->
@@ -249,55 +284,25 @@ function timeAgo(d: string) {
             <div>
               <div class="flex items-center gap-2 mb-1">
                 <span class="px-2 py-0.5 rounded bg-cyber-purple/20 text-cyber-purple text-xs font-mono font-bold">{{ detailReport.version }}</span>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize"
-                  :class="detailReport.status === 'completed' ? 'bg-green-500/15 text-green-400' : 'bg-blue-500/15 text-blue-400'">{{ detailReport.status }}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] bg-neural-700/50 text-gray-300">{{ detailReport.period }}</span>
               </div>
               <h3 class="text-lg font-bold text-white">{{ detailReport.title }}</h3>
-              <p class="text-xs text-gray-400">{{ new Date(detailReport.date).toLocaleString() }}</p>
             </div>
             <div class="flex gap-1">
-              <button @click="downloadWord(detailReport)" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-blue-400" title="Word"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /></svg></button>
-              <button @click="downloadPDF(detailReport)" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-red-400" title="PDF"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg></button>
+              <button @click="downloadWord(detailReport)" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-blue-400"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /></svg></button>
               <button @click="showDetail = false" class="p-2 rounded-lg hover:bg-neural-600 text-gray-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
           </div>
           <div class="flex-1 overflow-y-auto p-6 space-y-4">
             <p class="text-sm text-gray-300">{{ detailReport.summary }}</p>
             <div class="grid grid-cols-3 gap-3">
-              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30 text-center">
-                <p class="text-2xl font-bold text-white">{{ detailReport.jobs_found }}</p>
-                <p class="text-[9px] text-gray-500 uppercase">Found</p>
-              </div>
-              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30 text-center">
-                <p class="text-2xl font-bold text-yellow-400">{{ detailReport.jobs_scored }}</p>
-                <p class="text-[9px] text-gray-500 uppercase">Scored</p>
-              </div>
-              <div class="bg-neural-800/50 rounded-lg p-3 border border-neural-700/30 text-center">
-                <p class="text-2xl font-bold text-green-400">{{ detailReport.jobs_matched }}</p>
-                <p class="text-[9px] text-gray-500 uppercase">Matched</p>
-              </div>
+              <div class="bg-neural-800/50 rounded-lg p-3 text-center border border-neural-700/30"><p class="text-2xl font-bold text-white">{{ detailReport.jobs_found }}</p><p class="text-[9px] text-gray-500">Found</p></div>
+              <div class="bg-neural-800/50 rounded-lg p-3 text-center border border-neural-700/30"><p class="text-2xl font-bold text-yellow-400">{{ detailReport.jobs_scored }}</p><p class="text-[9px] text-gray-500">Scored</p></div>
+              <div class="bg-neural-800/50 rounded-lg p-3 text-center border border-neural-700/30"><p class="text-2xl font-bold text-green-400">{{ detailReport.jobs_matched }}</p><p class="text-[9px] text-gray-500">Matched</p></div>
             </div>
-            <div>
-              <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-2">Agents Used</h4>
-              <div class="flex flex-wrap gap-1.5">
-                <span v-for="a in detailReport.agents_used" :key="a" class="px-2.5 py-1 rounded-full text-xs bg-cyber-purple/15 text-cyber-purple capitalize">{{ a }}</span>
-              </div>
-            </div>
-            <div>
-              <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-2">APIs Called</h4>
-              <div class="flex flex-wrap gap-1.5">
-                <span v-for="a in detailReport.apis_called" :key="a" class="px-2.5 py-1 rounded-full text-xs bg-cyan-500/15 text-cyan-400">{{ a }}</span>
-              </div>
-            </div>
-            <div>
-              <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-2">Actions Log</h4>
-              <div class="space-y-1">
-                <div v-for="(action, idx) in detailReport.actions" :key="idx" class="flex items-start gap-2 text-xs text-gray-400">
-                  <span class="text-[10px] text-gray-600 shrink-0">{{ idx + 1 }}.</span>
-                  <span>{{ action }}</span>
-                </div>
-              </div>
-            </div>
+            <div><h4 class="text-xs text-gray-400 uppercase mb-2">Agents</h4><div class="flex flex-wrap gap-1.5"><span v-for="a in detailReport.agents_used" :key="a" class="px-2 py-0.5 rounded-full text-xs bg-cyber-purple/15 text-cyber-purple capitalize">{{ a }}</span></div></div>
+            <div><h4 class="text-xs text-gray-400 uppercase mb-2">APIs</h4><div class="flex flex-wrap gap-1.5"><span v-for="a in detailReport.apis_called" :key="a" class="px-2 py-0.5 rounded-full text-xs bg-cyan-500/15 text-cyan-400">{{ a }}</span></div></div>
+            <div><h4 class="text-xs text-gray-400 uppercase mb-2">Log</h4><div class="space-y-1"><p v-for="(a, i) in detailReport.actions" :key="i" class="text-xs text-gray-400">{{ i + 1 }}. {{ a }}</p></div></div>
           </div>
         </div>
       </div>
