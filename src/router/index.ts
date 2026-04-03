@@ -129,6 +129,11 @@ const router = createRouter({
           name: 'admin-credentials',
           component: () => import('@/views/admin/Credentials.vue')
         },
+        {
+          path: 'phantom',
+          name: 'admin-phantom',
+          component: () => import('@/views/admin/PhantomReport.vue')
+        },
       ]
     },
     {

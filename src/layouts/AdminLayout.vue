@@ -25,6 +25,7 @@ const sidebarLinks = [
   { name: 'admin-git-nexus', label: 'Git Nexus', icon: '🌐' },
   { name: 'admin-certificates', label: 'Certificates', icon: '🏆' },
   { name: 'admin-credentials', label: 'Credentials', icon: '🔐' },
+  { name: 'admin-phantom', label: 'Phantom Report', icon: '👻' },
   { name: 'admin-jobs', label: 'Jobs Pipeline', icon: '💼' },
 ]
 </script>
