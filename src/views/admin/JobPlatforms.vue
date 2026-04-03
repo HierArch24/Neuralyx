@@ -14,12 +14,15 @@ interface Platform {
 
 // Known platforms with details
 const KNOWN: Record<string, { name: string; type: Platform['type']; url: string; registered: boolean; profile_complete: boolean; agent: string; agent_status: Platform['agent_status'] }> = {
-  indeed: { name: 'Indeed', type: 'job_board', url: 'https://ph.indeed.com', registered: true, profile_complete: false, agent: 'Scout Scraper', agent_status: 'active' },
+  indeed: { name: 'Indeed', type: 'job_board', url: 'https://ph.indeed.com', registered: true, profile_complete: true, agent: 'Scout Scraper', agent_status: 'active' },
   linkedin: { name: 'LinkedIn', type: 'job_board', url: 'https://linkedin.com', registered: true, profile_complete: true, agent: 'Scout + Monitor', agent_status: 'active' },
-  glassdoor: { name: 'Glassdoor', type: 'job_board', url: 'https://glassdoor.com', registered: true, profile_complete: false, agent: 'Scout Scraper', agent_status: 'active' },
-  ziprecruiter: { name: 'ZipRecruiter', type: 'job_board', url: 'https://ziprecruiter.com', registered: true, profile_complete: false, agent: 'Scout Scraper', agent_status: 'active' },
-  jobstreet: { name: 'JobStreet PH', type: 'job_board', url: 'https://ph.jobstreet.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'idle' },
-  // Registered
+  glassdoor: { name: 'Glassdoor', type: 'job_board', url: 'https://glassdoor.com', registered: true, profile_complete: true, agent: 'Scout Scraper', agent_status: 'active' },
+  ziprecruiter: { name: 'ZipRecruiter', type: 'job_board', url: 'https://ziprecruiter.com', registered: true, profile_complete: true, agent: 'Scout Scraper', agent_status: 'active' },
+  jobstreet: { name: 'JobStreet PH', type: 'job_board', url: 'https://ph.jobstreet.com', registered: true, profile_complete: true, agent: 'Playwright Scraper', agent_status: 'active' },
+  kalibrr: { name: 'Kalibrr', type: 'job_board', url: 'https://kalibrr.com', registered: true, profile_complete: true, agent: 'Playwright Scraper', agent_status: 'active' },
+  onlinejobs: { name: 'OnlineJobs.ph', type: 'job_board', url: 'https://onlinejobs.ph', registered: true, profile_complete: true, agent: 'Playwright Scraper', agent_status: 'active' },
+  bossjob: { name: 'Bossjob', type: 'job_board', url: 'https://bossjob.ph', registered: true, profile_complete: true, agent: 'Playwright Scraper', agent_status: 'active' },
+  // Aggregators (no account)
   himalayas: { name: 'Himalayas', type: 'aggregator', url: 'https://himalayas.app', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active' },
   remoteok: { name: 'RemoteOK', type: 'aggregator', url: 'https://remoteok.com', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active' },
   remotive: { name: 'Remotive', type: 'aggregator', url: 'https://remotive.com', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active' },
@@ -40,8 +43,8 @@ const KNOWN: Record<string, { name: string; type: Platform['type']; url: string;
   teal: { name: 'Teal', type: 'job_board', url: 'https://tealhq.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active' },
   grabjobs: { name: 'GrabJobs', type: 'job_board', url: 'https://grabjobs.co', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active' },
   // Freelance
-  freelancer: { name: 'Freelancer.com', type: 'freelance', url: 'https://freelancer.com', registered: true, profile_complete: false, agent: 'Project Monitor', agent_status: 'idle' },
-  careerbuilder: { name: 'CareerBuilder', type: 'job_board', url: 'https://careerbuilder.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'idle' },
+  freelancer: { name: 'Freelancer.com', type: 'freelance', url: 'https://freelancer.com', registered: true, profile_complete: true, agent: 'Project Monitor', agent_status: 'active' },
+  careerbuilder: { name: 'CareerBuilder', type: 'job_board', url: 'https://careerbuilder.com', registered: true, profile_complete: true, agent: 'Playwright Scraper', agent_status: 'active' },
   toptal: { name: 'Toptal', type: 'freelance', url: 'https://toptal.com', registered: false, profile_complete: false, agent: 'Not Assigned', agent_status: 'none' },
   remotehunter: { name: 'RemoteHunter', type: 'aggregator', url: 'https://remotehunter.com', registered: false, profile_complete: false, agent: 'Not Assigned', agent_status: 'none' },
   'remote.co': { name: 'Remote.co', type: 'aggregator', url: 'https://remote.co', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active' },
