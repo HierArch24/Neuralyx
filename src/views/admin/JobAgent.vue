@@ -60,21 +60,18 @@ const PLATFORMS = [
   { id: 'linkedin', name: 'LinkedIn', enabled: true, icon: '🟦', group: 'JSearch API' },
   { id: 'glassdoor', name: 'Glassdoor', enabled: true, icon: '🟢', group: 'JSearch API' },
   { id: 'google', name: 'Google Jobs', enabled: true, icon: '🔴', group: 'JSearch API' },
-  // Philippines-Specific (need Playwright - Phase 2)
-  { id: 'jobstreet', name: 'JobStreet PH', enabled: false, icon: '🟣', group: 'PH Sites' },
-  { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷', group: 'PH Sites' },
-  { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠', group: 'PH Sites' },
-  { id: 'bossjob', name: 'Bossjob', enabled: false, icon: '🟡', group: 'PH Sites' },
-  { id: 'virtualstaff', name: 'VirtualStaff.ph', enabled: false, icon: '👤', group: 'PH Sites' },
-  { id: 'philjobnet', name: 'PhilJobNet (Gov)', enabled: false, icon: '🇵🇭', group: 'PH Sites' },
-  { id: 'mynimo', name: 'Mynimo', enabled: false, icon: '📍', group: 'PH Sites' },
-  { id: 'bruntwork', name: 'BruntWork', enabled: false, icon: '💼', group: 'PH Sites' },
-  // Freelance (need account)
-  { id: 'upwork', name: 'Upwork', enabled: false, icon: '🟩', group: 'Freelance' },
-  { id: 'toptal', name: 'Toptal', enabled: false, icon: '💎', group: 'Freelance' },
-  { id: 'freelancer', name: 'Freelancer.com', enabled: false, icon: '🏷️', group: 'Freelance' },
+  // Philippines / Regional (Playwright)
+  { id: 'jobstreet', name: 'JobStreet PH', enabled: false, icon: '🟣', group: 'PH Sites', registered: true },
+  { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷', group: 'PH Sites', registered: true },
+  { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠', group: 'PH Sites', registered: true },
+  { id: 'bossjob', name: 'Bossjob', enabled: false, icon: '🟡', group: 'PH Sites', registered: true },
+  { id: 'remotehunter', name: 'RemoteHunter', enabled: false, icon: '🎯', group: 'PH Sites', registered: false },
+  // Freelance
+  { id: 'upwork', name: 'Upwork', enabled: false, icon: '🟩', group: 'Freelance', registered: false },
+  { id: 'toptal', name: 'Toptal', enabled: false, icon: '💎', group: 'Freelance', registered: false },
+  { id: 'freelancer', name: 'Freelancer.com', enabled: false, icon: '🏷️', group: 'Freelance', registered: false },
   // Other
-  { id: 'facebook', name: 'Facebook Jobs', enabled: false, icon: '📘', group: 'Other' },
+  { id: 'facebook', name: 'Facebook Jobs', enabled: false, icon: '📘', group: 'Other', registered: false },
 ]
 
 const platformToggles = ref(
