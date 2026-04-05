@@ -691,7 +691,7 @@ function finishTask(t: Task, detail: string, error = false) {
         <span class="relative flex items-center gap-1">
           <svg v-if="!updating" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
           <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-          {{ updating ? updateProgress : 'Update Jobs' }}
+          {{ updating ? updateProgress : 'Pull & Score Jobs' }}
         </span>
       </button>
       <button @click="fillAllJobs" :disabled="filling || updating" class="px-2.5 py-1.5 bg-yellow-500/15 text-yellow-400 rounded-lg text-[11px] font-medium hover:bg-yellow-500/25 disabled:opacity-50 flex items-center gap-1 shrink-0 relative overflow-hidden min-w-[110px]">

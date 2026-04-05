@@ -54,6 +54,7 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-jobs@neuralyx.ai.dev-environment.site}
     volumes:
       - uploads_data:/app/uploads
+      - ./wiki:/app/wiki
     depends_on:
       - postgres
 
