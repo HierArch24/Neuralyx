@@ -121,7 +121,7 @@ async function runAgent() {
         preferred_job_types: profile?.preferred_job_types || ['remote', 'full-time'],
         preferred_locations: profile?.preferred_locations || ['Philippines', 'Remote'],
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(300000),
     })
     agentProgress.value = 40
 

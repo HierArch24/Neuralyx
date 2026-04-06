@@ -296,7 +296,7 @@ async function searchJSearch(query: string, location: string, page: number = 1):
     const params = new URLSearchParams({
       query: location ? `${query} in ${location}` : query,
       page: String(page),
-      num_pages: '3',
+      num_pages: '2',
       date_posted: 'month',
     })
     const res = await fetch(`https://jsearch.p.rapidapi.com/search?${params}`, {
@@ -1255,40 +1255,43 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
   const sources: string[] = []
 
   // Search with focused queries matching Gabriel's expertise
+  // Use focused queries — max 3 to avoid timeout
   const domainQueries = query ? [query] : [
-    'AI automation engineer',
-    'AI engineer remote',
-    'Vue TypeScript developer',
-    'Python AI developer',
-    'fullstack developer remote',
-    'AI agent developer',
-    'machine learning engineer remote',
-    'DevOps MLOps engineer',
-    'PHP Laravel developer remote',
-    'n8n automation developer',
+    'AI automation engineer remote',
+    'fullstack developer Vue Python',
+    'AI agent developer PHP Laravel',
   ]
 
   const searchLoc = location || ''
 
-  // Run all sources for EACH domain query
-  for (const sq of domainQueries) {
-    try {
-      const [him, rok, rem, arb, hn, li] = await Promise.allSettled([
+  // Run ALL queries in parallel (not sequential) for speed
+  const queryResults = await Promise.allSettled(
+    domainQueries.map(async (sq) => {
+      const results: NormalizedJob[] = []
+      const [him, rok, rem, arb, hn] = await Promise.allSettled([
         searchHimalayas(sq),
         searchRemoteOK(sq),
         searchRemotive(sq),
         searchArbeitnow(sq),
         searchHackerNews(sq),
-        searchLinkedInPublic(sq, searchLoc),
       ])
-      for (const r of [him, rok, rem, arb, hn, li]) {
-        if (r.status === 'fulfilled' && r.value.length) allJobs.push(...r.value)
+      for (const r of [him, rok, rem, arb, hn]) {
+        if (r.status === 'fulfilled' && r.value.length) results.push(...r.value)
       }
-      if (JSEARCH_API_KEY) {
-        const js = await searchJSearch(sq, searchLoc)
-        allJobs.push(...js)
-      }
-    } catch (e) { errors.push(String(e)) }
+      return results
+    })
+  )
+  for (const r of queryResults) {
+    if (r.status === 'fulfilled') allJobs.push(...r.value)
+  }
+
+  // JSearch separately (rate limited, single combined query)
+  if (JSEARCH_API_KEY) {
+    try {
+      const jsQuery = query || 'AI engineer automation developer'
+      const js = await searchJSearch(jsQuery, searchLoc)
+      allJobs.push(...js)
+    } catch (e) { errors.push(`JSearch: ${e}`) }
   }
 
   // Deduplicate
@@ -1314,7 +1317,7 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
 
     // Process ALL found jobs (pre-filtered already)
     const minRequired = min_score || 65
-    const toProcess = allJobs.slice(0, 150)
+    const toProcess = allJobs.slice(0, 50)
     let discarded = 0
     for (const job of toProcess) {
       try {
@@ -1840,11 +1843,15 @@ const server = createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req))
       const message = body.message || ''
+      const { createHmac } = await import('node:crypto')
+      const secret = 'neuralyx-phantom-webhook-2026'
       const timestamp = Date.now()
       const convId = 'neuralyx-admin'
 
-      // Try without signature first (direct message)
-      const actualBody = JSON.stringify({ message, conversation_id: convId, timestamp })
+      // Phantom signature: HMAC-SHA256(secret, "timestamp.bodyWithoutSignature")
+      const bodyWithoutSig = JSON.stringify({ message, conversation_id: convId, timestamp })
+      const signature = createHmac('sha256', secret).update(`${timestamp}.${bodyWithoutSig}`).digest('hex')
+      const actualBody = JSON.stringify({ message, conversation_id: convId, timestamp, signature })
 
       let pRes
       for (const host of ['http://neuralyx-phantom:3100', 'http://host.docker.internal:3100']) {

@@ -69,7 +69,18 @@ export const useAdminStore = defineStore('admin', () => {
   const fetchSkills = () => fetchTable<Skill>('skills', skills, 'category')
   const fetchTools = () => fetchTable<Tool>('tools', tools, 'category')
   const fetchMessages = () => fetchTable<ContactMessage>('contact_messages', messages, 'created_at')
-  const fetchNews = () => fetchTable<NewsArticle>('news', news, 'sort_order')
+  const fetchNews = async () => {
+    await fetchTable<NewsArticle>('news', news, 'sort_order')
+    // If Supabase returned nothing, use fallback from content store
+    if (news.value.length === 0) {
+      try {
+        const { useContentStore } = await import('./content')
+        const content = useContentStore()
+        if (!content.news.length) await content.fetchAll()
+        if (content.news.length > 0) news.value = content.news
+      } catch { /* content store unavailable */ }
+    }
+  }
   const fetchCredentials = () => fetchTable<Credential>('credentials', credentials, 'company')
   const fetchJobListings = () => fetchTable<JobListing>('job_listings', jobListings, 'created_at')
   const fetchJobProfile = () => fetchTable<JobProfile>('job_profile', jobProfile, 'created_at')

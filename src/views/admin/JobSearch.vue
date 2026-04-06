@@ -199,7 +199,7 @@ async function updateJobs() {
         preferred_job_types: profile?.preferred_job_types || ['remote', 'full-time'],
         preferred_locations: profile?.preferred_locations || ['Philippines', 'Remote'],
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(300000),
     })
     updatePercent.value = 35
     if (!res.ok) { finishTask(task, 'Pipeline error', true); updating.value = false; return }
