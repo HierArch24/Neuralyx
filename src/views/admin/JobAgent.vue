@@ -14,7 +14,23 @@ const agentStatus = ref('')
 const agentProgress = ref(0)
 const agentStep = ref('')
 
-const searchQuery = ref('AI engineer automation developer')
+const searchQuery = ref('AI engineer, fullstack developer, automation engineer, ML developer')
+
+// Predefined job role tags based on Gabriel's skills
+const JOB_ROLE_TAGS = [
+  'AI Engineer', 'AI Automation Engineer', 'Full Stack Developer', 'Vue.js Developer',
+  'Python Developer', 'PHP Laravel Developer', 'ML Engineer', 'MLOps Engineer',
+  'DevOps Engineer', 'AI Agent Developer', 'Automation Specialist', 'Systems Engineer',
+  'Backend Developer', 'Frontend Developer', 'n8n Developer', 'LLM Engineer',
+]
+const activeRoleTags = ref<Set<string>>(new Set(['AI Engineer', 'Full Stack Developer', 'AI Automation Engineer', 'ML Engineer']))
+
+function toggleRoleTag(tag: string) {
+  if (activeRoleTags.value.has(tag)) activeRoleTags.value.delete(tag)
+  else activeRoleTags.value.add(tag)
+  // Update search query from active tags
+  searchQuery.value = [...activeRoleTags.value].join(', ')
+}
 const searchLocation = ref('Philippines, Remote')
 const minScore = ref(65)
 const schedule = ref('24h')
@@ -82,7 +98,13 @@ const PLATFORMS = [
 const platformToggles = ref(Object.fromEntries(PLATFORMS.map(p => [p.id, p.enabled])))
 const enabledCount = computed(() => Object.values(platformToggles.value).filter(Boolean).length)
 
-onMounted(() => admin.fetchJobAgentLogs())
+let logRefreshTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  admin.fetchJobAgentLogs()
+  // Auto-refresh logs every 10 seconds
+  logRefreshTimer = setInterval(() => admin.fetchJobAgentLogs(), 10000)
+})
+onUnmounted(() => { if (logRefreshTimer) clearInterval(logRefreshTimer) })
 
 const logs = computed(() =>
   [...admin.jobAgentLogs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -142,6 +164,9 @@ async function runAgent() {
         data.total = data.jobs.length
       } catch { /* playwright scrape failed, continue */ }
     }
+
+    // Refresh logs after search
+    admin.fetchJobAgentLogs()
 
     // Step 2: Save to DB
     agentStep.value = 'save'; agentProgress.value = 50
@@ -316,9 +341,20 @@ function stepIcon(step: string) {
 
     <!-- Search Config + Run -->
     <div class="glass-dark rounded-xl p-4 border border-neural-700/50 mb-6">
+      <!-- Role Tags -->
+      <div class="mb-3">
+        <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-2">Target Roles (click to toggle)</label>
+        <div class="flex flex-wrap gap-1.5">
+          <button v-for="tag in JOB_ROLE_TAGS" :key="tag" @click="toggleRoleTag(tag)"
+            class="px-2.5 py-1 rounded-full text-[10px] font-medium transition-all"
+            :class="activeRoleTags.has(tag) ? 'bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/30' : 'bg-neural-700/50 text-gray-500 border border-neural-700 hover:text-gray-300'">
+            {{ tag }}
+          </button>
+        </div>
+      </div>
       <div class="flex gap-3 items-end mb-3">
         <div class="flex-1">
-          <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Search Query</label>
+          <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Search Query (auto-built from tags above)</label>
           <input v-model="searchQuery" placeholder="AI Engineer, Vue Developer..."
             class="w-full px-3 py-2 bg-neural-800 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" />
         </div>

@@ -1255,18 +1255,19 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
   const sources: string[] = []
 
   // Search with focused queries matching Gabriel's expertise
-  // Use focused queries — max 3 to avoid timeout
-  const domainQueries = query ? [query] : [
+  // Split comma-separated query into individual searches (max 4)
+  const rawQueries = query ? query.split(',').map((q: string) => q.trim()).filter(Boolean) : [
     'AI automation engineer remote',
     'fullstack developer Vue Python',
-    'AI agent developer PHP Laravel',
+    'AI agent developer',
   ]
+  const domainQueries = rawQueries.slice(0, 4) // Max 4 parallel queries
 
   const searchLoc = location || ''
 
   // Run ALL queries in parallel (not sequential) for speed
   const queryResults = await Promise.allSettled(
-    domainQueries.map(async (sq) => {
+    domainQueries.map(async (sq: string) => {
       const results: NormalizedJob[] = []
       const [him, rok, rem, arb, hn] = await Promise.allSettled([
         searchHimalayas(sq),

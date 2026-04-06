@@ -471,10 +471,21 @@ const REQUIREMENTS_LIBRARY = [
   { id: 'cover_formal', name: 'Cover Letter (Formal/ATS)', category: 'template', file: '', icon: '✉️', description: 'AI-generated formal cover letter — auto-filled per job', selectable: false },
   { id: 'cover_email', name: 'Cover Letter (Email)', category: 'template', file: '', icon: '📧', description: 'AI-generated conversational email — auto-filled per job', selectable: false },
   // Info
-  { id: 'salary', name: 'Salary Expectations', category: 'info', file: '', icon: '💰', description: 'PHP 80,000-150,000/mo or USD 1,500-3,000/mo (remote)', selectable: false },
+  { id: 'salary', name: 'Salary Expectations', category: 'info', file: '', icon: '💰', description: 'USD 100K-150K/yr (US remote) · PHP 80K-150K/mo (PH)', selectable: false },
+  { id: 'auth_us', name: 'Work Authorization (US Remote)', category: 'info', file: '', icon: '🇺🇸', description: 'Authorized for US work-from-home/remote positions', selectable: false },
   { id: 'auth_ph', name: 'Work Authorization (PH)', category: 'info', file: '', icon: '🇵🇭', description: 'Philippine citizen — no visa sponsorship needed', selectable: false },
   { id: 'availability', name: 'Availability', category: 'info', file: '', icon: '📅', description: 'Available immediately — can start within 1 week', selectable: false },
 ]
+
+// Selectable state for library items (which ones to include per application)
+const selectedLibraryItems = ref<Set<string>>(new Set(['resume', 'portfolio', 'linkedin', 'github', 'cover_formal', 'salary', 'auth_us', 'auth_ph', 'availability']))
+function toggleLibraryItem(id: string) {
+  if (selectedLibraryItems.value.has(id)) selectedLibraryItems.value.delete(id)
+  else selectedLibraryItems.value.add(id)
+  selectedLibraryItems.value = new Set(selectedLibraryItems.value) // force reactivity
+}
+function selectAllLibrary() { REQUIREMENTS_LIBRARY.forEach(r => selectedLibraryItems.value.add(r.id)); selectedLibraryItems.value = new Set(selectedLibraryItems.value) }
+function deselectAllLibrary() { selectedLibraryItems.value = new Set() }
 
 // Character References (selectable — choose which to include per application)
 const CHARACTER_REFERENCES = [
@@ -491,8 +502,8 @@ const CHARACTER_REFERENCES = [
 const KNOCKOUT_ANSWERS = [
   { q: 'Will you require visa sponsorship now or in the future?', a: 'No — Philippine citizen, no sponsorship needed for PH/remote roles', auto: true },
   { q: 'Are you legally authorized to work in the Philippines?', a: 'Yes — Philippine citizen', auto: true },
-  { q: 'Are you legally authorized to work in the US?', a: 'No — open to remote roles only. Will need sponsorship for US onsite.', auto: false },
-  { q: 'What is your desired salary?', a: 'PHP 80,000-150,000/month or USD 1,500-3,000/month for remote', auto: true },
+  { q: 'Are you legally authorized to work in the US?', a: 'Yes — authorized for US remote/work-from-home positions', auto: true },
+  { q: 'What is your desired salary?', a: 'USD 100,000-150,000/year for US remote roles. PHP 80,000-150,000/month for PH roles.', auto: true },
   { q: 'How many years of experience do you have?', a: '8+ years in software engineering, AI automation, and web development', auto: true },
   { q: 'Are you willing to relocate?', a: 'Open to remote and hybrid in Philippines. Open to relocation for the right opportunity.', auto: true },
   { q: 'What is your earliest start date?', a: 'Available immediately — can start within 1 week', auto: true },
@@ -1133,23 +1144,32 @@ function finishTask(t: Task, detail: string, error = false) {
             <!-- Requirements Library Tab -->
             <div v-if="detailTab === 'requirements'" class="space-y-4">
               <div class="bg-neural-800/50 rounded-lg p-4 border border-neural-700/30">
-                <h4 class="text-[9px] text-gray-500 uppercase tracking-wider mb-3">Documents & Assets Library</h4>
-                <p class="text-[10px] text-gray-500 mb-3">Select items the AI agent uses when applying to this job. All selected items are auto-attached or referenced during application.</p>
-                <div class="space-y-1.5">
-                  <div v-for="req in REQUIREMENTS_LIBRARY" :key="req.id"
-                    class="flex items-center gap-3 p-2.5 rounded-lg border border-neural-700/30 hover:bg-neural-700/20 transition-colors">
-                    <span class="text-lg shrink-0">{{ req.icon }}</span>
+                <div class="flex items-center justify-between mb-3">
+                  <h4 class="text-[9px] text-gray-500 uppercase tracking-wider">Documents & Assets Library</h4>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[9px] text-gray-500">{{ selectedLibraryItems.size }}/{{ REQUIREMENTS_LIBRARY.length }} selected</span>
+                    <button @click="selectAllLibrary" class="px-2 py-0.5 bg-green-500/15 text-green-400 rounded text-[8px] hover:bg-green-500/25">All</button>
+                    <button @click="deselectAllLibrary" class="px-2 py-0.5 bg-neural-700 text-gray-400 rounded text-[8px] hover:bg-neural-600">None</button>
+                  </div>
+                </div>
+                <p class="text-[10px] text-gray-500 mb-3">Select items to include when applying. AI agent will auto-attach or reference selected items.</p>
+                <div class="space-y-1">
+                  <label v-for="req in REQUIREMENTS_LIBRARY" :key="req.id"
+                    class="flex items-center gap-3 p-2 rounded-lg border transition-colors cursor-pointer"
+                    :class="selectedLibraryItems.has(req.id) ? 'border-green-500/20 bg-green-500/5' : 'border-neural-700/30 hover:bg-neural-700/20'">
+                    <input type="checkbox" :checked="selectedLibraryItems.has(req.id)" @change="toggleLibraryItem(req.id)" class="rounded border-neural-600 bg-neural-800 text-green-500 focus:ring-green-500 w-3.5 h-3.5 shrink-0" />
+                    <span class="text-base shrink-0">{{ req.icon }}</span>
                     <div class="flex-1 min-w-0">
-                      <p class="text-xs text-white font-medium">{{ req.name }}</p>
+                      <p class="text-[11px] text-white font-medium">{{ req.name }}</p>
                       <p class="text-[9px] text-gray-500 truncate">{{ req.description }}</p>
                     </div>
                     <span class="px-1.5 py-0.5 rounded text-[8px] font-medium capitalize" :class="reqCatStyle(req.category)">
                       {{ req.category }}
                     </span>
-                    <a v-if="req.file && req.file.startsWith('http')" :href="req.file" target="_blank" class="px-2 py-1 bg-neural-700 text-gray-300 rounded text-[9px] hover:bg-neural-600 shrink-0">Open</a>
-                    <a v-else-if="req.file && req.file.startsWith('/')" :href="req.file" target="_blank" class="px-2 py-1 bg-neural-700 text-gray-300 rounded text-[9px] hover:bg-neural-600 shrink-0">View</a>
-                    <button v-if="req.file" @click="copyText(req.file)" class="px-2 py-1 bg-neural-700 text-gray-300 rounded text-[9px] hover:bg-neural-600 shrink-0">Copy</button>
-                  </div>
+                    <a v-if="req.file && req.file.startsWith('http')" :href="req.file" target="_blank" @click.stop class="px-2 py-1 bg-neural-700 text-gray-300 rounded text-[9px] hover:bg-neural-600 shrink-0">Open</a>
+                    <a v-else-if="req.file && req.file.startsWith('/')" :href="req.file" target="_blank" @click.stop class="px-2 py-1 bg-neural-700 text-gray-300 rounded text-[9px] hover:bg-neural-600 shrink-0">View</a>
+                    <button v-if="req.file" @click.stop="copyText(req.file)" class="px-2 py-1 bg-neural-700 text-gray-300 rounded text-[9px] hover:bg-neural-600 shrink-0">Copy</button>
+                  </label>
                 </div>
               </div>
 
