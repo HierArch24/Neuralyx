@@ -29,3 +29,7 @@ Skills found:
 ## [2026-04-06] ingest | 29 jobs from 25 companies
 Companies: runn, zirkel8-tiecorp-ug-haftungsbeschr-nkt, vays-ventures-gmbh, mbodi-ai, zep-ai-is-hiring, ramain, toma, kaizen, multifactor, structured-ai +15 more
 Skills found: 
+
+## [2026-04-06] ingest | 35 jobs from 28 companies
+Companies: runn, 8mylez-gmbh, zirkel8-tiecorp-ug-haftungsbeschr-nkt, mbodi-ai, zep-ai-is-hiring, ramain, toma, kaizen, converge, multifactor +18 more
+Skills found: 

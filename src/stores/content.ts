@@ -79,11 +79,18 @@ const FALLBACK_PROJECTS: Project[] = [
     video_url: null, is_featured: true, sort_order: 1, created_at: now, updated_at: now,
   },
   {
+    id: uid(), title: 'LIVITI AI Content Engine', slug: 'liviti-content-engine',
+    description: 'Enterprise-grade AI content automation platform that replaced 6-8 specialists and $25K/mo in SaaS costs. Features a 5-agent AI pipeline (Orchestrator → Researcher → Writer → Critic → Editor), 10 Docker microservices, WordPress auto-publishing, SEO scoring engine, and multi-platform content repurposing to YouTube, Instagram, LinkedIn, Facebook & X — all from a single topic input.',
+    image_url: '/assets/images/projects/liviti-blog-history.png', tech_stack: ['Vue 3', 'TypeScript', 'n8n', 'Supabase', 'Docker', 'Google Gemini', 'SearXNG', 'WordPress API', 'SerpBear', 'Semrush MCP'],
+    category: 'ai', github_url: null, live_url: '/assets/documents/liviti-content-engine-overview.pdf',
+    video_url: null, is_featured: true, sort_order: 2, created_at: now, updated_at: now,
+  },
+  {
     id: uid(), title: 'AI Agent Orchestrator', slug: 'ai-agent-orchestrator',
     description: 'Multi-agent system using CrewAI and LangChain for automated research, content generation, and task delegation across intelligent AI agents.',
     image_url: null, tech_stack: ['Python', 'CrewAI', 'LangChain', 'OpenAI', 'FastAPI'],
     category: 'ai', github_url: null, live_url: null,
-    video_url: null, is_featured: true, sort_order: 2, created_at: now, updated_at: now,
+    video_url: null, is_featured: true, sort_order: 3, created_at: now, updated_at: now,
   },
   {
     id: uid(), title: 'Billing System', slug: 'billing-system',

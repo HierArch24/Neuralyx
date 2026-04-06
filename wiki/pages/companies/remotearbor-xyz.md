@@ -3,7 +3,7 @@ title: remotearbor.xyz
 type: company
 created: 2026-04-06
 updated: 2026-04-06
-sources: 1
+sources: 2
 tags: [unknown]
 ---
 
@@ -15,6 +15,7 @@ tags: [unknown]
 - **ATS:** Unknown
 
 ## Open Positions
+- AI Automation Developer to Build Custom Claudebot System (APIs, Scraping, Reports) - Contract to Hire (PH) — [View](https://remotearbor.xyz/job/ai-automation-developer-to-build-custom-claudebot-system-apis-scraping-reports-contract-to-3?utm_campaign=google_jobs_apply&utm_source=google_jobs_apply&utm_medium=organic)
 - AI-Powered eBay Automation Developer — Lightspeed & Powersport Support (Remote) — [View](https://remotearbor.xyz/job/ai-powered-ebay-automation-developer-lightspeed-powersport-support-1)
 
 ## Application Channels
