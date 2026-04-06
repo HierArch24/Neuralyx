@@ -3,7 +3,7 @@ title: Remotejobs
 type: company
 created: 2026-04-06
 updated: 2026-04-06
-sources: 1
+sources: 2
 tags: [unknown]
 ---
 
@@ -15,6 +15,7 @@ tags: [unknown]
 - **ATS:** Unknown
 
 ## Open Positions
+- Make.com Automation Developer Test Project AI Powered Meeting Intelligence System - Contract to Hire (Remote) — [View](https://remotejobs.iceiy.com/job/make-com-automation-developer-test-project-ai-powered-meeting-intelligence-system-contract-to-hire-2)
 - AI Developer & Automation Engineer | Claude Code | Agentic Workflows | Web Builds (CA) — [View](https://remotejobs.iceiy.com/job/ai-developer-automation-engineer-claude-code-agentic-workflows-web-builds?utm_campaign=google_jobs_apply&utm_source=google_jobs_apply&utm_medium=organic)
 
 ## Application Channels

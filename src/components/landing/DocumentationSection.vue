@@ -48,8 +48,10 @@
         >
           <!-- Card image or gradient placeholder -->
           <div class="relative h-40 overflow-hidden">
-            <img v-if="article.image_url" :src="article.image_url" :alt="article.title" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-            <div v-else class="w-full h-full flex items-center justify-center"
+            <img v-if="article.image_url" :src="article.image_url" :alt="article.title"
+              class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              @error="(e: Event) => { const img = e.target as HTMLImageElement; img.style.display='none'; img.nextElementSibling?.classList.remove('hidden') }" />
+            <div :class="article.image_url ? 'hidden' : ''" class="w-full h-full flex items-center justify-center"
                  :style="{ background: `linear-gradient(135deg, ${getCategoryColor(article.category)}15, ${getCategoryColor(article.category)}05)` }">
               <span class="text-4xl opacity-30">{{ getCategoryIcon(article.category) }}</span>
             </div>
