@@ -576,6 +576,14 @@ const FALLBACK_NEWS: NewsArticle[] = [
     link_url: 'https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f',
     category: 'ai', is_published: true, is_featured: true, sort_order: 1, created_at: now, updated_at: now,
   },
+  {
+    id: uid(), title: 'TruffleHog: Find & Validate Leaked Secrets Across 800+ Credential Types', slug: 'trufflehog-secrets-scanner',
+    summary: 'TruffleHog discovers, classifies, validates, and analyzes leaked credentials across Git repos, cloud storage, Docker images, CI/CD pipelines, and more — covering 800+ secret types with 25.6K GitHub stars.',
+    content: `<h2>Your Secrets Are Leaking — TruffleHog Finds Them</h2><p>TruffleHog is the industry-standard open-source tool for detecting leaked secrets and credentials. With 25.6K GitHub stars, it scans across Git repositories, S3 buckets, Docker images, Slack messages, wikis, logs, and API platforms to find API keys, database passwords, private encryption keys, and other authentication credentials that should never have been exposed.</p><h2>Why It Matters</h2><p>A single leaked API key can compromise an entire organization. TruffleHog doesn't just find secrets — it <strong>validates</strong> them to confirm if they're still active, and <strong>analyzes</strong> the scope of damage by checking what permissions the credential grants. This turns a noisy scan into actionable intelligence.</p><h2>800+ Secret Types</h2><p>TruffleHog classifies over 800 different secret types — from AWS keys and GitHub tokens to database connection strings, JWT secrets, Stripe keys, and private certificates. Each detection is mapped to a specific identity and service for precise remediation.</p><h2>Scan Anything</h2><ul><li><strong>Git repos</strong> — individual repos, entire GitHub/GitLab organizations</li><li><strong>Cloud storage</strong> — S3, GCS buckets</li><li><strong>Docker images</strong> — scan container layers for embedded secrets</li><li><strong>CI/CD</strong> — Jenkins, CircleCI build logs</li><li><strong>Chat & Wikis</strong> — Slack, Confluence</li><li><strong>Elasticsearch</strong> — cluster-wide secret scanning</li></ul><h2>DevSecOps Integration</h2><p>TruffleHog integrates with pre-commit hooks, CI/CD pipelines, and outputs JSON for automated processing. Essential for any security-conscious development workflow.</p><a href="https://github.com/trufflesecurity/trufflehog" target="_blank">View on GitHub →</a>`,
+    image_url: 'https://opengraph.githubassets.com/1/trufflesecurity/trufflehog', video_url: null,
+    link_url: 'https://github.com/trufflesecurity/trufflehog',
+    category: 'tool', is_published: true, is_featured: false, sort_order: 24, created_at: now, updated_at: now,
+  },
 ]
 
 export const useContentStore = defineStore('content', () => {
