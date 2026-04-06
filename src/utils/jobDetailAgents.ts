@@ -23,6 +23,7 @@ export interface FillResult {
     company_careers_url?: string
     external_form_url?: string
     ats_system?: string
+    generated_description?: string
     work_arrangement?: string
     country?: string
     match_score?: number
@@ -67,9 +68,14 @@ export async function fillJobDetails(
  */
 export function buildUpdatePayload(result: FillResult): Record<string, unknown> {
   const d = result.data
-  return {
+  const payload: Record<string, unknown> = {
     match_score: d.match_score || null,
-    raw_data: {
+  }
+  // If AI generated a description for a job that had none, save it
+  if (d.generated_description) {
+    payload.description = d.generated_description
+  }
+  payload.raw_data = {
       role_type: d.role_type || null,
       company_bucket: d.company_bucket || null,
       company_type_detail: d.company_type_detail || null,
@@ -90,8 +96,8 @@ export function buildUpdatePayload(result: FillResult): Record<string, unknown> 
       seniority: d.seniority || null,
       salary_estimate: d.salary_estimate || null,
       recommendation: d.recommendation || null,
-    },
-  }
+    }
+  return payload
 }
 
 // Platform logos (emoji + color)

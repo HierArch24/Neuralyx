@@ -296,7 +296,7 @@ async function searchJSearch(query: string, location: string, page: number = 1):
     const params = new URLSearchParams({
       query: location ? `${query} in ${location}` : query,
       page: String(page),
-      num_pages: '1',
+      num_pages: '3',
       date_posted: 'month',
     })
     const res = await fetch(`https://jsearch.p.rapidapi.com/search?${params}`, {
@@ -1155,10 +1155,26 @@ For expected_filtering_layers: list what steps the candidate will likely face AF
 
 For inferred_company_email: ALWAYS fill this. If company is "Acme Inc" and URL contains acme.com, use hr@acme.com. If company is "TechCorp" with no domain visible, guess hr@techcorp.com. Look for domains in the job URL and description URLs. Common patterns: hr@, careers@, jobs@, recruiting@, talent@, apply@. NEVER return null for this field — always provide your best guess.`
 
-  const raw = await callAI(prompt, `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || ''}\nURL: ${job.url || ''}\nDescription: ${desc}`)
+  // If description is missing or too short, generate one
+  let finalDesc = desc
+  if (finalDesc.length < 100 && (OPENAI_KEY || GEMINI_KEY)) {
+    try {
+      finalDesc = await callAI(
+        'Generate a realistic job description (300-500 words) based on the title, company, and location. Include responsibilities, requirements, and qualifications. Return plain text only.',
+        `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || 'Remote'}`
+      )
+    } catch { /* keep original */ }
+  }
+
+  const raw = await callAI(prompt, `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || ''}\nURL: ${job.url || ''}\nDescription: ${finalDesc}`)
   const jsonStr = raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '')
   const match = jsonStr.match(/\{[\s\S]*\}/)
   const result = match ? JSON.parse(match[0]) : {}
+
+  // If we generated a description, include it in the result
+  if (finalDesc.length > 100 && desc.length < 100) {
+    result.generated_description = finalDesc
+  }
 
   // Auto-research: if no recruiter_email and no inferred_company_email, try SearXNG
   if (!result.recruiter_email && !result.inferred_company_email && SEARXNG_URL) {
@@ -1257,9 +1273,15 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
   // Search with focused queries matching Gabriel's expertise
   const domainQueries = query ? [query] : [
     'AI automation engineer',
+    'AI engineer remote',
     'Vue TypeScript developer',
     'Python AI developer',
     'fullstack developer remote',
+    'AI agent developer',
+    'machine learning engineer remote',
+    'DevOps MLOps engineer',
+    'PHP Laravel developer remote',
+    'n8n automation developer',
   ]
 
   const searchLoc = location || ''
@@ -1308,7 +1330,7 @@ async function handleAgentRun(req: IncomingMessage, res: ServerResponse) {
 
     // Process ALL found jobs (pre-filtered already)
     const minRequired = min_score || 65
-    const toProcess = allJobs.slice(0, 80)
+    const toProcess = allJobs.slice(0, 150)
     let discarded = 0
     for (const job of toProcess) {
       try {

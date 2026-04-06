@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import type { JobListing } from '@/types/database'
 import { searchJobs } from '@/utils/jobSearchAgent'
@@ -62,11 +62,19 @@ function isIrrelevantJob(title: string): boolean {
 
 // Use getPlatform from jobDetailAgents.ts (replaces inline PLATFORMS)
 
+let jobRefreshTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(async () => {
   await admin.fetchJobListings()
   admin.fetchJobProfile()
   await cleanupIrrelevantJobs()
+  // Auto-refresh every 15 seconds to pick up new jobs in real-time
+  jobRefreshTimer = setInterval(async () => {
+    await admin.fetchJobListings()
+  }, 15000)
 })
+
+onUnmounted(() => { if (jobRefreshTimer) clearInterval(jobRefreshTimer) })
 
 // Deep clean: delete ALL jobs that don't match our domain
 function isRelevantJob(title: string): boolean {
@@ -921,6 +929,10 @@ function finishTask(t: Task, detail: string, error = false) {
                   </a>
                 </div>
                 <div v-if="detailJob.description" class="p-4 text-sm text-gray-300 leading-relaxed max-h-[40vh] overflow-y-auto job-desc" v-html="sanitizeHtml(detailJob.description)"></div>
+                <div v-else-if="(detailJob.raw_data as any)?.generated_description" class="p-4">
+                  <div class="flex items-center gap-1.5 mb-2"><span class="text-[10px] text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded">AI Generated</span></div>
+                  <div class="text-sm text-gray-300 leading-relaxed max-h-[40vh] overflow-y-auto">{{ (detailJob.raw_data as any).generated_description }}</div>
+                </div>
                 <div v-else class="p-4 text-center text-gray-500 text-sm">No description available. <a v-if="detailJob.url" :href="detailJob.url" target="_blank" class="text-cyber-cyan hover:underline">View on {{ p(detailJob.platform).label }}</a></div>
               </div>
             </div>
