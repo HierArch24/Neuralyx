@@ -1840,27 +1840,11 @@ const server = createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req))
       const message = body.message || ''
-      const secret = 'neuralyx-phantom-webhook-2026'
       const timestamp = Date.now()
       const convId = 'neuralyx-admin'
 
-      // Build payload (timestamp must be a number!)
-      const payloadObj = { message, conversation_id: convId, timestamp, signature: '' }
-      const rawBody = JSON.stringify(payloadObj).replace('"signature":""', '"signature":"PLACEHOLDER"')
-
-      // Signature = HMAC-SHA256(secret, "${timestamp}.${rawBody}")
-      const { createHmac } = await import('node:crypto')
-      // Compute with final body (need to include the signature field in body)
-      const bodyWithoutSig = JSON.stringify({ message, conversation_id: convId, timestamp })
-      const sigPayload = `${timestamp}.${bodyWithoutSig}`
-      const signature = createHmac('sha256', secret).update(sigPayload).digest('hex')
-
-      const finalBody = JSON.stringify({ message, conversation_id: convId, timestamp, signature })
-
-      // Recompute with final body including signature
-      const sigPayload2 = `${timestamp}.${finalBody}`
-      const signature2 = createHmac('sha256', secret).update(sigPayload2).digest('hex')
-      const actualBody = JSON.stringify({ message, conversation_id: convId, timestamp, signature: signature2 })
+      // Try without signature first (direct message)
+      const actualBody = JSON.stringify({ message, conversation_id: convId, timestamp })
 
       let pRes
       for (const host of ['http://neuralyx-phantom:3100', 'http://host.docker.internal:3100']) {
