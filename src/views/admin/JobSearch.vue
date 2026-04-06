@@ -209,7 +209,7 @@ async function updateJobs() {
     updateTask(task, 40, 'Scraping account platforms...')
     try {
       const { jobs: pwJobs } = await scrapeAllPlaywrightPlatforms(
-        ['jobstreet', 'kalibrr', 'onlinejobs', 'bossjob', 'freelancer'],
+        ['indeed_ph', 'jobstreet', 'kalibrr', 'onlinejobs', 'bossjob', 'freelancer'],
         searchQuery.value || 'AI engineer automation',
         (msg: string) => updateTask(task, 45, msg),
       )

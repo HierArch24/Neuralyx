@@ -68,6 +68,7 @@ const PLATFORMS = [
   { id: 'ziprecruiter', name: 'ZipRecruiter', enabled: true, icon: '✅', group: 'jsearch' },
   { id: 'google_jobs', name: 'Google Jobs', enabled: true, icon: '🔴', group: 'jsearch' },
   // Registered — Playwright Phase 2
+  { id: 'indeed_ph', name: 'Indeed PH (Direct)', enabled: true, icon: '🔵', group: 'playwright' },
   { id: 'jobstreet', name: 'JobStreet PH', enabled: false, icon: '🟣', group: 'playwright' },
   { id: 'kalibrr', name: 'Kalibrr', enabled: false, icon: '🔷', group: 'playwright' },
   { id: 'onlinejobs', name: 'OnlineJobs.ph', enabled: false, icon: '🟠', group: 'playwright' },

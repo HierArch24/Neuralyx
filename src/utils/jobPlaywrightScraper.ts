@@ -11,6 +11,11 @@ const PLATFORM_SCRAPERS: Record<string, {
   parseSelector: string
   name: string
 }> = {
+  indeed_ph: {
+    url: (q: string) => `https://ph.indeed.com/jobs?q=${encodeURIComponent(q)}&l=Philippines&fromage=14`,
+    parseSelector: '.job_seen_beacon',
+    name: 'Indeed PH',
+  },
   jobstreet: {
     url: (q: string) => `https://ph.jobstreet.com/${encodeURIComponent(q)}-jobs`,
     parseSelector: 'article[data-testid="job-card"]',

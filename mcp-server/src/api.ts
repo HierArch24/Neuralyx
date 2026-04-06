@@ -1155,26 +1155,10 @@ For expected_filtering_layers: list what steps the candidate will likely face AF
 
 For inferred_company_email: ALWAYS fill this. If company is "Acme Inc" and URL contains acme.com, use hr@acme.com. If company is "TechCorp" with no domain visible, guess hr@techcorp.com. Look for domains in the job URL and description URLs. Common patterns: hr@, careers@, jobs@, recruiting@, talent@, apply@. NEVER return null for this field — always provide your best guess.`
 
-  // If description is missing or too short, generate one
-  let finalDesc = desc
-  if (finalDesc.length < 100 && (OPENAI_KEY || GEMINI_KEY)) {
-    try {
-      finalDesc = await callAI(
-        'Generate a realistic job description (300-500 words) based on the title, company, and location. Include responsibilities, requirements, and qualifications. Return plain text only.',
-        `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || 'Remote'}`
-      )
-    } catch { /* keep original */ }
-  }
-
-  const raw = await callAI(prompt, `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || ''}\nURL: ${job.url || ''}\nDescription: ${finalDesc}`)
+  const raw = await callAI(prompt, `Title: ${job.title}\nCompany: ${job.company}\nLocation: ${job.location || ''}\nURL: ${job.url || ''}\nDescription: ${desc}`)
   const jsonStr = raw.replace(/^```json\s*\n?/, '').replace(/\n?\s*```\s*$/, '')
   const match = jsonStr.match(/\{[\s\S]*\}/)
   const result = match ? JSON.parse(match[0]) : {}
-
-  // If we generated a description, include it in the result
-  if (finalDesc.length > 100 && desc.length < 100) {
-    result.generated_description = finalDesc
-  }
 
   // Auto-research: if no recruiter_email and no inferred_company_email, try SearXNG
   if (!result.recruiter_email && !result.inferred_company_email && SEARXNG_URL) {
