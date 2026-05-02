@@ -19,6 +19,10 @@ A cinematic, full-stack portfolio platform built for AI Systems Engineer **Gabri
 
 ## Features
 
+### Latest Updates (May 2026)
+- **[Video Creation & Agent Updates](docs/VIDEO_CREATION_UPDATES.md)**: Read the full changelog on the new AI Interview Video Creation pipeline, unified model picker, WebM→MP4 transcoding, Maxine gRPC integration, and the floating draggable Gabriel AI Chat.
+- **[Complete Tools & Skills Catalog](docs/COMPLETE-CATALOG.md)**: Details on the 14 configured MCP servers and 182+ ECC skills integrated into the project.
+
 ### Landing Page
 - Cinematic hero with scroll-synced video background
 - Parallax rings section with mouse-reactive layers
