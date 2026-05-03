@@ -605,15 +605,18 @@ async function batchFixMissingImages() {
   batchFixing.value = false
 }
 
-// ─── Permanently fix ALL images (regenerate every article's thumbnail) ───
+// ─── Generate thumbnails only for articles that have no image ───
 async function batchFixAllImages() {
-  if (!confirm('Regenerate ALL article thumbnails? This will overwrite existing images.')) return
+  const missing = admin.news.filter(a => !a.image_url)
+  if (!missing.length) {
+    alert('All articles already have thumbnails.')
+    return
+  }
 
-  const allArticles = [...admin.news]
   batchFixing.value = true
-  batchProgress.value = { done: 0, total: allArticles.length, current: '' }
+  batchProgress.value = { done: 0, total: missing.length, current: '' }
 
-  for (const article of allArticles) {
+  for (const article of missing) {
     batchProgress.value.current = article.title
     try {
       const result = await generateThumbnail(
@@ -632,7 +635,7 @@ async function batchFixAllImages() {
 
   await admin.fetchNews()
   batchFixing.value = false
-  alert(`Done! Processed ${allArticles.length} articles.`)
+  alert(`Done! Generated ${missing.length} missing thumbnails.`)
 }
 
 function openCreate() {
@@ -851,8 +854,8 @@ async function unpinFromLanding(article: NewsArticle) {
       <div class="flex items-center gap-3 min-w-0">
         <span class="text-cyber-purple text-lg flex-shrink-0">⚡</span>
         <div class="min-w-0">
-          <p class="text-xs text-cyber-purple font-medium">Regenerate ALL thumbnails</p>
-          <p class="text-[10px] text-gray-500">Overwrites existing images for all {{ admin.news.length }} articles</p>
+          <p class="text-xs text-cyber-purple font-medium">Generate missing thumbnails</p>
+          <p class="text-[10px] text-gray-500">Only generates for articles without an image ({{ admin.news.filter(a => !a.image_url).length }} remaining)</p>
         </div>
       </div>
       <button @click="batchFixAllImages" :disabled="batchFixing"
@@ -862,7 +865,7 @@ async function unpinFromLanding(article: NewsArticle) {
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
-        {{ batchFixing ? `Generating ${batchProgress.done}/${batchProgress.total}...` : 'Generate All Images' }}
+        {{ batchFixing ? `Generating ${batchProgress.done}/${batchProgress.total}...` : 'Generate Missing' }}
       </button>
     </div>
 
