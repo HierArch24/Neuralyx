@@ -1,0 +1,35 @@
+# SadTalker — GPU-ready (NVIDIA CUDA 11.7), CPU fallback supported
+# When you upgrade to NVIDIA GPU: enable `deploy.resources.reservations` in docker-compose.yml
+# and rebuild: docker compose up --build sadtalker
+
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git wget ffmpeg libglib2.0-0 libsm6 libxrender1 libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone SadTalker
+RUN git clone https://github.com/OpenTalker/SadTalker.git . \
+    && git checkout main
+
+# Python deps
+RUN pip install --no-cache-dir \
+    torch==2.0.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu117 \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir gradio==3.37.0
+
+# Download pretrained models (runs once at build time — cached in image)
+# Models go into checkpoints/ and gfpgan/
+RUN bash scripts/download_models.sh || true
+
+# Expose Gradio port
+EXPOSE 7860
+
+# CPU_ONLY=1 → runs without GPU (slow but works on any machine)
+# Set CPU_ONLY=0 in docker-compose when you have NVIDIA GPU
+ENV CPU_ONLY=1
+
+CMD ["sh", "-c", "python app_sadtalker.py --port 7860 --share False $([ \"$CPU_ONLY\" = '1' ] && echo '--cpu' || echo '')"]

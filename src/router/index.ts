@@ -65,6 +65,12 @@ const router = createRouter({
       component: () => import('@/views/admin/LoginPage.vue')
     },
     {
+      path: '/interview-chat',
+      name: 'interview-chat-popout',
+      component: () => import('@/views/admin/InterviewChatPopout.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/admin',
       component: () => import('@/layouts/AdminLayout.vue'),
       meta: { requiresAuth: true },
@@ -134,6 +140,11 @@ const router = createRouter({
           name: 'admin-phantom',
           component: () => import('@/views/admin/PhantomReport.vue')
         },
+        {
+          path: 'video-creation',
+          name: 'admin-video-creation',
+          component: () => import('@/views/admin/VideoCreation.vue')
+        },
       ]
     },
     {
@@ -180,6 +191,21 @@ const router = createRouter({
           path: 'api-usage',
           name: 'admin-jobs-api',
           component: () => import('@/views/admin/JobApiUsage.vue')
+        },
+        {
+          path: 'node-report',
+          name: 'admin-jobs-node-report',
+          component: () => import('@/views/admin/NodeReport.vue')
+        },
+        {
+          path: 'session-logs',
+          name: 'admin-jobs-session-logs',
+          component: () => import('@/views/admin/SessionLogs.vue')
+        },
+        {
+          path: 'monitor',
+          name: 'admin-jobs-monitor',
+          component: () => import('@/views/admin/JobMonitor.vue')
         },
       ]
     },

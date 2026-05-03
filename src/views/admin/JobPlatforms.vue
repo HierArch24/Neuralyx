@@ -34,25 +34,25 @@ const KNOWN: Record<string, KnownPlatform> = {
   // ── Active API platforms (pulling jobs now) ──────────────────────────
   himalayas: { name: 'Himalayas', type: 'aggregator', url: 'https://himalayas.app', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   remoteok: { name: 'RemoteOK', type: 'aggregator', url: 'https://remoteok.com', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
-  remotive: { name: 'Remotive', type: 'aggregator', url: 'https://remotive.com', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
+  remotive: { name: 'Remotive', type: 'aggregator', url: 'https://remotive.com', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREEMIUM('$39', '$299/yr', 'Free: basic search + API (limited). Pro: unlimited alerts, advanced filters, salary insights, company profiles, priority support, API access.', 'https://remotive.com/pricing') },
   arbeitnow: { name: 'Arbeitnow', type: 'aggregator', url: 'https://arbeitnow.com', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   hackernews: { name: 'HN / YC Jobs', type: 'aggregator', url: 'https://news.ycombinator.com', registered: false, profile_complete: false, agent: 'Scout API', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   // ── Active API + Account platforms (pulling via JSearch) ─────────────
   indeed: { name: 'Indeed', type: 'job_board', url: 'https://ph.indeed.com', registered: true, profile_complete: false, agent: 'Scout Scraper', agent_status: 'active', login_type: 'google', login_status: 'logged_in', subscription: SUB_FREEMIUM('$5', '$45/yr', 'Free job search & apply. Indeed Resume: highlighted to employers. Sponsored jobs get priority.', 'https://ph.indeed.com/career-advice/finding-a-job/indeed-premium') },
-  linkedin: { name: 'LinkedIn', type: 'job_board', url: 'https://linkedin.com', registered: true, profile_complete: false, agent: 'Scout + Monitor', agent_status: 'active', login_type: 'google', login_status: 'logged_in', subscription: SUB_FREEMIUM('$29.99', '$239.88/yr', 'Free: search & apply. Premium Career: InMail, who viewed profile, salary insights, AI resume review, top applicant badge.', 'https://www.linkedin.com/premium/products/') },
-  glassdoor: { name: 'Glassdoor', type: 'job_board', url: 'https://glassdoor.com', registered: true, profile_complete: false, agent: 'Scout Scraper', agent_status: 'active', login_type: 'google', login_status: 'logged_in', subscription: SUB_FREE },
+  linkedin: { name: 'LinkedIn', type: 'job_board', url: 'https://linkedin.com', registered: true, profile_complete: false, agent: 'Scout + Monitor', agent_status: 'active', login_type: 'google', login_status: 'logged_out', subscription: SUB_FREEMIUM('$29.99', '$239.88/yr', 'Free: search & apply. Premium Career: InMail, who viewed profile, salary insights, AI resume review, top applicant badge.', 'https://www.linkedin.com/premium/products/') },
+  glassdoor: { name: 'Glassdoor', type: 'job_board', url: 'https://glassdoor.com', registered: true, profile_complete: false, agent: 'Scout Scraper', agent_status: 'active', login_type: 'google', login_status: 'logged_out', subscription: SUB_FREE },
   ziprecruiter: { name: 'ZipRecruiter', type: 'job_board', url: 'https://ziprecruiter.com', registered: true, profile_complete: false, agent: 'Scout Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: SUB_FREE },
   google_jobs: { name: 'Google Jobs', type: 'aggregator', url: 'https://www.google.com/search?q=jobs', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   // ── Account platforms (Playwright Phase 2 — toggled OFF) ─────────────
-  jobstreet: { name: 'JobStreet PH', type: 'job_board', url: 'https://ph.jobstreet.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'google', login_status: 'logged_in', subscription: SUB_FREE },
-  kalibrr: { name: 'Kalibrr', type: 'job_board', url: 'https://kalibrr.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: SUB_FREE },
-  onlinejobs: { name: 'OnlineJobs.ph', type: 'job_board', url: 'https://onlinejobs.ph', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: SUB_FREE },
-  bossjob: { name: 'Bossjob', type: 'job_board', url: 'https://bossjob.ph', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: SUB_FREE },
-  careerbuilder: { name: 'CareerBuilder', type: 'job_board', url: 'https://careerbuilder.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: SUB_FREE },
+  jobstreet: { name: 'JobStreet PH', type: 'job_board', url: 'https://ph.jobstreet.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'google', login_status: 'logged_out', subscription: SUB_FREE },
+  kalibrr: { name: 'Kalibrr', type: 'job_board', url: 'https://kalibrr.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_out', subscription: SUB_FREE },
+  onlinejobs: { name: 'OnlineJobs.ph', type: 'job_board', url: 'https://onlinejobs.ph', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_out', subscription: SUB_FREE },
+  bossjob: { name: 'Bossjob', type: 'job_board', url: 'https://bossjob.ph', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_out', subscription: SUB_FREE },
+  careerbuilder: { name: 'CareerBuilder', type: 'job_board', url: 'https://careerbuilder.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_out', subscription: SUB_FREE },
   // ── Freelance platforms ──────────────────────────────────────────────
-  freelancer: { name: 'Freelancer.com', type: 'freelance', url: 'https://freelancer.com', registered: true, profile_complete: false, agent: 'Project Monitor', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: SUB_FREEMIUM('$4.95', '$49.95/yr', 'Free: bid on projects (limited bids/month). Plus: 50 bids/mo, priority support. Professional: 100 bids/mo, highlighted profile.', 'https://www.freelancer.com/membership') },
-  toptal: { name: 'Toptal', type: 'freelance', url: 'https://toptal.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: { required: false, plan: 'free', details: 'Free for talent. Screening process required. No subscription — Toptal takes commission from client billing.' } },
-  careerdotio: { name: 'Career.io', type: 'job_board', url: 'https://career.io', registered: true, profile_complete: false, agent: 'Not Assigned', agent_status: 'none', login_type: 'email', login_status: 'logged_in', subscription: SUB_PAID('$5.95', '$44.95/yr', 'Resume builder, cover letter generator, job tracker, interview prep. 7-day trial available.', 'https://career.io/pricing') },
+  freelancer: { name: 'Freelancer.com', type: 'freelance', url: 'https://freelancer.com', registered: true, profile_complete: false, agent: 'Project Monitor', agent_status: 'active', login_type: 'email', login_status: 'logged_out', subscription: SUB_FREEMIUM('$4.95', '$49.95/yr', 'Free: bid on projects (limited bids/month). Plus: 50 bids/mo, priority support. Professional: 100 bids/mo, highlighted profile.', 'https://www.freelancer.com/membership') },
+  toptal: { name: 'Toptal', type: 'freelance', url: 'https://toptal.com', registered: true, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'active', login_type: 'email', login_status: 'logged_out', subscription: { required: false, plan: 'free', details: 'Free for talent. Screening process required. No subscription — Toptal takes commission from client billing.' } },
+  careerdotio: { name: 'Career.io', type: 'job_board', url: 'https://career.io', registered: true, profile_complete: false, agent: 'Not Assigned', agent_status: 'none', login_type: 'email', login_status: 'logged_out', subscription: SUB_PAID('$5.95', '$44.95/yr', 'Resume builder, cover letter generator, job tracker, interview prep. 7-day trial available.', 'https://career.io/pricing') },
   upwork: { name: 'Upwork', type: 'freelance', url: 'https://upwork.com', registered: false, profile_complete: false, agent: 'Project Monitor', agent_status: 'none', login_type: 'none', login_status: 'n/a', subscription: SUB_FREEMIUM('$14.99', '$', 'Free: 10 Connects/month. Freelancer Plus: 80 Connects/mo, profile visibility boost, custom profile URL.', 'https://www.upwork.com/freelancer-plus') },
   // ── JSearch proxy boards (no account) ────────────────────────────────
   jobleads: { name: 'JobLeads', type: 'aggregator', url: 'https://jobleads.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_PAID('$9.95', '$59.95/yr', 'Premium job recommendations, direct employer contacts, salary insights.', 'https://www.jobleads.com/premium') },
@@ -63,12 +63,12 @@ const KNOWN: Record<string, KnownPlatform> = {
   weworkremotely: { name: 'We Work Remotely', type: 'job_board', url: 'https://weworkremotely.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   monster: { name: 'Monster', type: 'job_board', url: 'https://monster.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   simplyhired: { name: 'SimplyHired', type: 'aggregator', url: 'https://simplyhired.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
-  jooble: { name: 'Jooble', type: 'aggregator', url: 'https://jooble.org', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
+  jooble: { name: 'Jooble', type: 'aggregator', url: 'https://jooble.org', registered: true, profile_complete: true, agent: 'Scout API + JSearch Proxy', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: { required: false, plan: 'free', details: 'Free for job seekers. Aggregates 70+ job boards. Resume upload, email alerts, saved searches.' } },
   teal: { name: 'Teal', type: 'job_board', url: 'https://tealhq.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREEMIUM('$9', '$72/yr', 'Free: job tracker, resume builder. Pro+: AI resume tailoring, unlimited tracking, cover letters.', 'https://www.tealhq.com/pricing') },
   grabjobs: { name: 'GrabJobs', type: 'job_board', url: 'https://grabjobs.co', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   'remote.co': { name: 'Remote.co', type: 'aggregator', url: 'https://remote.co', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   learn4good: { name: 'Learn4Good', type: 'aggregator', url: 'https://learn4good.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
-  remoterocketship: { name: 'RemoteRocketship', type: 'aggregator', url: 'https://remoterocketship.com', registered: false, profile_complete: false, agent: 'JSearch Proxy', agent_status: 'active', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
+  remoterocketship: { name: 'RemoteRocketship', type: 'aggregator', url: 'https://remoterocketship.com', registered: true, profile_complete: true, agent: 'Scout API + JSearch Proxy', agent_status: 'active', login_type: 'email', login_status: 'logged_in', subscription: SUB_FREEMIUM('$19', '$149/yr', 'Free: browse jobs, basic search. Pro: unlimited alerts, advanced filters, salary data, company insights, apply tracker.', 'https://www.remoterocketship.com/pricing') },
   remotehunter: { name: 'RemoteHunter', type: 'aggregator', url: 'https://remotehunter.com', registered: false, profile_complete: false, agent: 'Not Assigned', agent_status: 'none', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   metacareers: { name: 'Meta Careers', type: 'company', url: 'https://www.metacareers.com', registered: false, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'idle', login_type: 'none', login_status: 'n/a', subscription: SUB_FREE },
   jobslin: { name: 'Jobslin PH', type: 'job_board', url: 'https://ph.jobslin.com', registered: false, profile_complete: false, agent: 'Playwright Scraper', agent_status: 'idle', login_type: 'email', login_status: 'n/a', subscription: SUB_FREE },
@@ -87,8 +87,44 @@ const showDetail = ref(false)
 const detailPlatform = ref<Platform | null>(null)
 const showSubDetail = ref(false)
 const subDetailPlatform = ref<Platform | null>(null)
+const loginCheckLoading = ref(false)
+const loginCheckResult = ref<Record<string, boolean> | null>(null)
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+async function checkLiveLoginStatus() {
+  loginCheckLoading.value = true
+  try {
+    // Try the local apply server first (port 8081)
+    const res = await fetch('http://localhost:8081/login-check', { signal: AbortSignal.timeout(120000) })
+    if (res.ok) {
+      const data = await res.json()
+      loginCheckResult.value = data.status || {}
+      // Update platform login statuses with live data
+      for (const p of platforms.value) {
+        if (loginCheckResult.value && p.id in loginCheckResult.value) {
+          p.login_status = loginCheckResult.value[p.id] ? 'logged_in' : 'logged_out'
+        }
+      }
+    }
+  } catch {
+    // Fallback: read from screenshots/login-status.json via MCP
+    try {
+      const res = await fetch(`${import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'}/api/fetch-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'http://localhost:8081/login-check' }),
+        signal: AbortSignal.timeout(120000),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        loginCheckResult.value = data.status || {}
+      }
+    } catch { /* apply server not running */ }
+  } finally {
+    loginCheckLoading.value = false
+  }
+}
 
 onMounted(async () => {
   await admin.fetchJobListings()
@@ -258,6 +294,13 @@ function viewSub(p: Platform, e: Event) { e.stopPropagation(); subDetailPlatform
         <option value="paid">Paid / Freemium</option>
       </select>
       <span class="text-[10px] text-gray-500 shrink-0">{{ filtered.length }} · Pg {{ currentPage }}/{{ totalPages }}</span>
+      <button
+        @click="checkLiveLoginStatus"
+        :disabled="loginCheckLoading"
+        class="px-3 py-2 bg-cyber-purple/20 border border-cyber-purple/40 rounded-lg text-[10px] font-medium text-cyber-purple hover:bg-cyber-purple/30 transition-all disabled:opacity-50 shrink-0"
+      >
+        {{ loginCheckLoading ? 'Checking logins...' : 'Check Login Status' }}
+      </button>
     </div>
 
     <!-- TABLE VIEW -->
@@ -301,9 +344,13 @@ function viewSub(p: Platform, e: Event) { e.stopPropagation(); subDetailPlatform
               </div>
             </td>
             <td class="px-3 py-2">
-              <div class="flex items-center gap-1.5">
-                <span class="px-1.5 py-0.5 rounded text-[9px] font-medium capitalize" :class="subPlanBg(p.subscription.plan)">{{ p.subscription.plan }}</span>
-                <button v-if="p.subscription.plan !== 'free'" @click="viewSub(p, $event)" class="px-1.5 py-0.5 rounded text-[8px] bg-neural-600 text-gray-300 hover:text-white hover:bg-neural-500 transition-colors" title="View pricing details">View</button>
+              <div class="flex flex-col gap-0.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-medium capitalize" :class="subPlanBg(p.subscription.plan)">{{ p.subscription.plan }}</span>
+                  <span v-if="p.subscription.monthly" class="text-[9px] text-green-400 font-medium">{{ p.subscription.monthly }}/mo</span>
+                  <button v-if="p.subscription.plan !== 'free'" @click="viewSub(p, $event)" class="px-1.5 py-0.5 rounded text-[8px] bg-neural-600 text-gray-300 hover:text-white hover:bg-neural-500 transition-colors" title="View pricing details">Details</button>
+                </div>
+                <span v-if="p.subscription.details" class="text-[8px] text-gray-500 truncate max-w-[200px]" :title="p.subscription.details">{{ p.subscription.details.slice(0, 50) }}{{ p.subscription.details.length > 50 ? '...' : '' }}</span>
               </div>
             </td>
             <td class="px-3 py-2 text-center">

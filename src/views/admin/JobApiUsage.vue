@@ -23,26 +23,44 @@ onMounted(async () => {
 })
 
 // API usage estimation from job data
-const apiCalls = computed(() => {
+// Subscription & pricing info for decision-making
+interface ApiInfo {
+  api: string; purpose: string; calls: number; limit: string; status: string; color: string
+  key_name?: string; key_configured?: boolean
+  pricing?: { free_tier: string; paid: string; url: string }
+}
+
+const apiCalls = computed((): ApiInfo[] => {
   const jobs = admin.jobListings.length
   const scored = admin.jobListings.filter(j => j.match_score !== null).length
+  const applied = admin.jobListings.filter(j => j.status === 'applied').length
   const agentRuns = admin.jobAgentLogs.length
   return [
-    { api: 'JSearch (RapidAPI)', purpose: 'Job search — Indeed, LinkedIn, Glassdoor, ZipRecruiter, Google', calls: Math.ceil(jobs * 0.15), limit: '500K/month', status: 'active', color: 'text-blue-400' },
-    { api: 'Himalayas', purpose: 'Remote job search (free, no auth)', calls: Math.ceil(jobs * 0.25), limit: 'Unlimited', status: 'active', color: 'text-amber-400' },
-    { api: 'RemoteOK', purpose: 'Remote job search (free, no auth)', calls: Math.ceil(jobs * 0.25), limit: 'Unlimited', status: 'active', color: 'text-teal-400' },
-    { api: 'Remotive', purpose: 'Remote job search (free, no auth)', calls: Math.ceil(jobs * 0.05), limit: '4 req/day', status: 'active', color: 'text-indigo-400' },
-    { api: 'Arbeitnow', purpose: 'EU job search (free, no auth)', calls: Math.ceil(jobs * 0.2), limit: 'Unlimited', status: 'active', color: 'text-pink-400' },
-    { api: 'Hacker News Firebase', purpose: 'YC/Startup jobs (free, no auth)', calls: Math.ceil(jobs * 0.1), limit: 'Unlimited', status: 'active', color: 'text-orange-400' },
-    { api: 'LinkedIn Public API', purpose: 'Job search (no login, limited)', calls: Math.ceil(jobs * 0.05), limit: 'Rate limited', status: 'active', color: 'text-sky-400' },
-    { api: 'OpenAI GPT', purpose: 'Classify, match, cover letters', calls: scored * 3, limit: 'Pay per use', status: admin.jobListings.some(j => j.match_score) ? 'active' : 'idle', color: 'text-green-400' },
-    { api: 'Google Gemini', purpose: 'Fallback for classify, match, cover letters', calls: 0, limit: 'Free tier', status: 'standby', color: 'text-cyan-400' },
+    // ── Job Search APIs ──
+    { api: 'JSearch (RapidAPI)', purpose: 'Job search — Indeed, LinkedIn, Glassdoor, ZipRecruiter, Google', calls: Math.ceil(jobs * 0.15), limit: '500/month (free)', status: 'active', color: 'text-blue-400', key_name: 'VITE_JSEARCH_KEY', key_configured: true, pricing: { free_tier: '500 req/month', paid: '$10/mo (10K req), $30/mo (100K req)', url: 'https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch/pricing' } },
+    { api: 'Jooble API', purpose: 'Job aggregator — 70+ boards, global coverage', calls: Math.ceil(jobs * 0.05), limit: 'Unlimited (free)', status: 'active', color: 'text-blue-300', key_name: 'JOOBLE_API_KEY', key_configured: true, pricing: { free_tier: 'Unlimited for job seekers', paid: 'N/A — free API', url: 'https://jooble.org/api/about' } },
+    { api: 'Himalayas', purpose: 'Remote job search (free, no auth)', calls: Math.ceil(jobs * 0.25), limit: 'Unlimited', status: 'active', color: 'text-amber-400', pricing: { free_tier: 'Unlimited', paid: 'N/A — free API', url: 'https://himalayas.app/api' } },
+    { api: 'RemoteOK', purpose: 'Remote job search (free, no auth)', calls: Math.ceil(jobs * 0.25), limit: 'Unlimited', status: 'active', color: 'text-teal-400', pricing: { free_tier: 'Unlimited', paid: 'N/A — free API', url: 'https://remoteok.com/api' } },
+    { api: 'Remotive', purpose: 'Remote job search + alerts', calls: Math.ceil(jobs * 0.05), limit: '4 req/day (free)', status: 'active', color: 'text-indigo-400', pricing: { free_tier: 'Basic search + API (limited)', paid: '$39/mo or $299/yr — unlimited alerts, advanced filters, salary insights, API access', url: 'https://remotive.com/pricing' } },
+    { api: 'RemoteRocketship', purpose: 'Curated remote jobs + salary data', calls: Math.ceil(jobs * 0.03), limit: 'Limited (free)', status: 'active', color: 'text-rose-400', pricing: { free_tier: 'Browse jobs, basic search', paid: '$19/mo or $149/yr — unlimited alerts, advanced filters, salary data, company insights', url: 'https://www.remoterocketship.com/pricing' } },
+    { api: 'Arbeitnow', purpose: 'EU/global job search (free, no auth)', calls: Math.ceil(jobs * 0.2), limit: 'Unlimited', status: 'active', color: 'text-pink-400', pricing: { free_tier: 'Unlimited', paid: 'N/A — free API', url: 'https://arbeitnow.com/api' } },
+    { api: 'HN/YC Jobs', purpose: 'YC/Startup jobs via Firebase', calls: Math.ceil(jobs * 0.1), limit: 'Unlimited', status: 'active', color: 'text-orange-400', pricing: { free_tier: 'Unlimited', paid: 'N/A — free', url: 'https://github.com/HackerNews/API' } },
+    { api: 'Adzuna', purpose: 'Global job search (not configured)', calls: 0, limit: '250/day (free)', status: 'not_configured', color: 'text-gray-500', key_name: 'ADZUNA_APP_KEY', key_configured: false, pricing: { free_tier: '250 req/day', paid: '$29/mo (5K req), custom plans', url: 'https://developer.adzuna.com/pricing' } },
+
+    // ── AI / ML APIs ──
+    { api: 'OpenAI GPT-4o-mini', purpose: 'Classify, match, cover letters (primary)', calls: scored * 3, limit: 'Pay per use', status: admin.jobListings.some(j => j.match_score) ? 'active' : 'idle', color: 'text-green-400', key_name: 'VITE_OPENAI_KEY', key_configured: true, pricing: { free_tier: '$5 free credit on signup', paid: '~$0.15/1M input tokens, ~$0.60/1M output tokens', url: 'https://openai.com/pricing' } },
+    { api: 'Google Gemini Flash', purpose: 'Classify, match, cover letters (fallback)', calls: scored * 2, limit: 'Free tier', status: 'active', color: 'text-cyan-400', key_name: 'VITE_GEMINI_KEY', key_configured: true, pricing: { free_tier: '15 req/min, 1M tokens/day', paid: '$0.075/1M input, $0.30/1M output (beyond free)', url: 'https://ai.google.dev/pricing' } },
+
+    // ── Automation APIs ──
+    { api: '2captcha', purpose: 'CAPTCHA solving (reCAPTCHA, hCaptcha, Turnstile)', calls: 0, limit: 'Pay per solve', status: 'not_configured', color: 'text-gray-500', key_name: 'TWOCAPTCHA_API_KEY', key_configured: false, pricing: { free_tier: 'None — pay per solve', paid: '$2.99/1000 normal CAPTCHA, $2.99/1000 reCAPTCHA', url: 'https://2captcha.com/pricing' } },
+    { api: 'cPanel SMTP', purpose: 'Send application emails + notifications', calls: applied * 2, limit: 'Server limit (~500/hr)', status: 'active', color: 'text-emerald-400', pricing: { free_tier: 'Included with hosting', paid: 'N/A — part of cPanel hosting', url: '' } },
+    { api: 'Resend (backup SMTP)', purpose: 'Backup email relay', calls: 0, limit: '100/day (free)', status: 'standby', color: 'text-gray-500', key_name: 'RESEND_API_KEY', key_configured: true, pricing: { free_tier: '100 emails/day, 3K/month', paid: '$20/mo (50K/mo)', url: 'https://resend.com/pricing' } },
+
+    // ── Local Services (no API key) ──
+    { api: 'Supabase (hosted)', purpose: 'Database — jobs, applications, profiles, logs', calls: jobs + applied + agentRuns, limit: '500MB/50K rows (free)', status: 'active', color: 'text-green-300', pricing: { free_tier: '2 projects, 500MB, 50K rows', paid: '$25/mo (8GB, unlimited rows)', url: 'https://supabase.com/pricing' } },
     { api: 'FAISS (local)', purpose: 'Semantic vector matching', calls: scored, limit: 'Unlimited (local)', status: (aiHealth.value as any)?.faiss ? 'active' : 'offline', color: 'text-yellow-400' },
-    { api: 'SearXNG (local)', purpose: 'Company research via web search', calls: agentRuns, limit: 'Unlimited (self-hosted)', status: 'active', color: 'text-purple-400' },
-    { api: 'Sentence Transformers', purpose: 'Text embedding (all-MiniLM-L6-v2)', calls: scored + jobs, limit: 'Unlimited (local)', status: (aiHealth.value as any)?.sentence_transformers ? 'active' : 'offline', color: 'text-violet-400' },
-    { api: 'SearXNG MCP', purpose: 'Search engine queries for Research Agent', calls: agentRuns * 3, limit: 'Unlimited', status: 'configured', color: 'text-fuchsia-400' },
-    { api: 'NotebookLM', purpose: 'Deep company research synthesis', calls: 0, limit: 'Free (Google)', status: (aiHealth.value as any)?.notebooklm ? 'active' : 'needs_login', color: 'text-emerald-400' },
-    { api: 'AgentScope', purpose: 'Parallel agent orchestration', calls: agentRuns, limit: 'Unlimited (local)', status: (aiHealth.value as any)?.agentscope ? 'active' : 'offline', color: 'text-lime-400' },
+    { api: 'SearXNG (Docker)', purpose: 'Company research via web search', calls: agentRuns, limit: 'Unlimited (self-hosted)', status: 'active', color: 'text-purple-400' },
+    { api: 'Playwright (local)', purpose: 'Browser automation — apply on platforms', calls: applied, limit: 'Unlimited (local)', status: 'active', color: 'text-violet-400' },
   ]
 })
 
@@ -120,22 +138,35 @@ function statusBadge(s: string) {
       <table class="w-full text-sm">
         <thead class="bg-neural-700/40">
           <tr>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">API / Service</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Purpose</th>
-            <th class="text-center px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Est. Calls</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Limit</th>
-            <th class="text-left px-4 py-3 text-gray-500 font-medium text-[10px] uppercase">Status</th>
+            <th class="text-left px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">API / Service</th>
+            <th class="text-left px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">Purpose</th>
+            <th class="text-center px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">Calls</th>
+            <th class="text-left px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">Limit</th>
+            <th class="text-left px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">Free Tier</th>
+            <th class="text-left px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">Paid Plan</th>
+            <th class="text-center px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">Key</th>
+            <th class="text-left px-3 py-3 text-gray-500 font-medium text-[10px] uppercase">Status</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="api in apiCalls" :key="api.api" class="border-t border-neural-700/30 hover:bg-neural-700/20 transition-colors">
-            <td class="px-4 py-3">
-              <span class="text-xs font-medium" :class="api.color">{{ api.api }}</span>
+            <td class="px-3 py-2.5">
+              <div class="flex flex-col">
+                <span class="text-xs font-medium" :class="api.color">{{ api.api }}</span>
+                <a v-if="api.pricing?.url" :href="api.pricing.url" target="_blank" class="text-[8px] text-cyber-purple hover:underline mt-0.5">View Pricing</a>
+              </div>
             </td>
-            <td class="px-4 py-3 text-[10px] text-gray-400 max-w-[250px]">{{ api.purpose }}</td>
-            <td class="px-4 py-3 text-center text-xs text-white font-medium">{{ api.calls }}</td>
-            <td class="px-4 py-3 text-[10px] text-gray-500">{{ api.limit }}</td>
-            <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize" :class="statusBadge(api.status)">{{ api.status.replace('_', ' ') }}</span></td>
+            <td class="px-3 py-2.5 text-[10px] text-gray-400 max-w-[200px]">{{ api.purpose }}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-white font-medium">{{ api.calls }}</td>
+            <td class="px-3 py-2.5 text-[10px] text-gray-500">{{ api.limit }}</td>
+            <td class="px-3 py-2.5 text-[10px] text-green-400">{{ api.pricing?.free_tier || '—' }}</td>
+            <td class="px-3 py-2.5 text-[10px] text-yellow-400 max-w-[180px]">{{ api.pricing?.paid || '—' }}</td>
+            <td class="px-3 py-2.5 text-center">
+              <span v-if="api.key_configured" class="text-green-400 text-[10px]" title="API key configured">&#10003;</span>
+              <span v-else-if="api.key_name" class="text-red-400 text-[10px]" :title="'Needs: ' + api.key_name">&#10007;</span>
+              <span v-else class="text-gray-600 text-[10px]">—</span>
+            </td>
+            <td class="px-3 py-2.5"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium capitalize" :class="statusBadge(api.status)">{{ api.status.replace('_', ' ') }}</span></td>
           </tr>
         </tbody>
       </table>

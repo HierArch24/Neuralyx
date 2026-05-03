@@ -617,7 +617,7 @@ export const useContentStore = defineStore('content', () => {
   })
 
   const publishedNews = computed(() =>
-    news.value.filter((n) => n.is_published).sort((a, b) => a.sort_order - b.sort_order),
+    news.value.filter((n) => n.is_published).sort((a, b) => b.sort_order - a.sort_order),
   )
 
   const featuredNews = computed(() => {
@@ -645,7 +645,7 @@ export const useContentStore = defineStore('content', () => {
         supabase.from('projects').select('*').order('sort_order'),
         supabase.from('skills').select('*').order('proficiency', { ascending: false }),
         supabase.from('tools').select('*').order('name'),
-        supabase.from('news').select('*').order('sort_order'),
+        supabase.from('news').select('*').order('sort_order', { ascending: false }),
       ])
 
       const hasData = skillsRes.data && skillsRes.data.length > 0

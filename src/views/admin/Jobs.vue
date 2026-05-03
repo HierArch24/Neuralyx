@@ -1,15 +1,108 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import { useRouter } from 'vue-router'
 
 const admin = useAdminStore()
 const router = useRouter()
 
+const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+const relayStatus = ref<'online' | 'offline' | 'checking'>('checking')
+const n8nStatus = ref<'online' | 'offline' | 'checking'>('checking')
+const dbStatus = ref<'online' | 'offline' | 'checking'>('checking')
+
+// ─── Pull & Score ───
+const isPulling = ref(false)
+const pullMsg = ref('')
+const pullResult = ref<{ saved: number; updated: number; skipped: number } | null>(null)
+let pullSSE: EventSource | null = null
+
+async function pullJobs() {
+  isPulling.value = true
+  pullMsg.value = 'Connecting to job sources...'
+  pullResult.value = null
+
+  if (pullSSE) pullSSE.close()
+  pullSSE = new EventSource(`${mcpUrl}/api/notifications/stream`)
+
+  const handlePullEvent = (d: Record<string, unknown>) => {
+    if (String(d.node || '').startsWith('pull')) {
+      pullMsg.value = (d.message as string) || ''
+    }
+    if (d.node === 'pull_complete') {
+      pullResult.value = { saved: (d.saved as number) || 0, updated: (d.updated as number) || 0, skipped: (d.skipped as number) || 0 }
+      isPulling.value = false
+      pullSSE?.close(); pullSSE = null
+      admin.fetchJobListings()
+    }
+  }
+
+  pullSSE.addEventListener('node_status', (e: MessageEvent) => {
+    try { handlePullEvent(JSON.parse(e.data)) } catch { }
+  })
+  pullSSE.addEventListener('pull_complete', (e: MessageEvent) => {
+    try { handlePullEvent(JSON.parse(e.data)) } catch { }
+  })
+  pullSSE.onerror = () => { /* auto-reconnects */ }
+
+  // Safety timeout
+  setTimeout(() => {
+    if (isPulling.value) {
+      isPulling.value = false
+      pullMsg.value = 'Pull timed out — check relay status'
+      pullSSE?.close(); pullSSE = null
+    }
+  }, 5 * 60 * 1000)
+
+  try {
+    await fetch(`${mcpUrl}/api/jobs/pull-and-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform: 'indeed',
+        queries: [
+          'AI engineer remote Philippines',
+          'automation developer remote Philippines',
+          'full stack developer AI remote',
+          'LLM engineer remote Philippines',
+          'n8n developer automation remote',
+        ],
+        min_score: 30,
+        limit: 40,
+      }),
+      signal: AbortSignal.timeout(10000),
+    })
+  } catch (e) {
+    isPulling.value = false
+    pullMsg.value = `Failed to start: ${e instanceof Error ? e.message : 'Error'}`
+    pullSSE?.close(); pullSSE = null
+  }
+}
+
+onUnmounted(() => { pullSSE?.close() })
+
+async function checkHealth() {
+  try {
+    const r = await fetch(`${mcpUrl}/api/health`, { signal: AbortSignal.timeout(4000) })
+    if (r.ok) {
+      const d = await r.json()
+      dbStatus.value = d.supabase === 'ok' ? 'online' : 'offline'
+    } else { dbStatus.value = 'offline' }
+  } catch { dbStatus.value = 'offline' }
+
+  try {
+    const r = await fetch(`${mcpUrl}/api/relay/health`, { signal: AbortSignal.timeout(4000) })
+    relayStatus.value = r.ok ? 'online' : 'offline'
+  } catch { relayStatus.value = 'offline' }
+
+  n8nStatus.value = 'offline' // bypassed in favor of direct relay
+}
+
 onMounted(() => {
   admin.fetchJobListings()
   admin.fetchJobApplications()
   admin.fetchJobAgentLogs()
+  checkHealth()
 })
 
 // ─── Pipeline Nodes ───
@@ -43,10 +136,8 @@ const avgScore = computed(() => {
 const totalApplied = computed(() => admin.jobApplications.length)
 const activeInterviews = computed(() => admin.jobApplications.filter(a => a.status.startsWith('interview')).length)
 const offers = computed(() => admin.jobApplications.filter(a => a.status.startsWith('offer')).length)
-const responseRate = computed(() => {
-  if (!totalApplied.value) return 0
-  return Math.round(admin.jobApplications.filter(a => !['applied', 'applying'].includes(a.status)).length / totalApplied.value * 100)
-})
+const dismissedJobs = computed(() => admin.jobListings.filter(j => j.status === 'dismissed').length)
+const appliedListings = computed(() => admin.jobListings.filter(j => j.status === 'applied').length)
 
 // Platform breakdown
 const platformBreakdown = computed(() => {
@@ -91,6 +182,24 @@ function timeAgo(d: string) {
 
 <template>
   <div>
+    <!-- System Health Bar -->
+    <div class="flex items-center gap-3 mb-3 px-1">
+      <span class="text-[9px] text-gray-500 uppercase tracking-wider">System</span>
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full" :class="dbStatus === 'online' ? 'bg-green-400' : dbStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'" />
+        <span class="text-[10px]" :class="dbStatus === 'online' ? 'text-green-400' : dbStatus === 'checking' ? 'text-yellow-400' : 'text-red-400'">DB</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full" :class="relayStatus === 'online' ? 'bg-green-400' : relayStatus === 'checking' ? 'bg-yellow-400 animate-pulse' : 'bg-red-500'" />
+        <span class="text-[10px]" :class="relayStatus === 'online' ? 'text-green-400' : relayStatus === 'checking' ? 'text-yellow-400' : 'text-red-400'">Edge Relay</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-gray-600" />
+        <span class="text-[10px] text-gray-500">n8n (bypassed)</span>
+      </div>
+      <button @click="checkHealth" class="ml-auto text-[9px] text-gray-600 hover:text-gray-400 transition-colors">↻ refresh</button>
+    </div>
+
     <!-- Stats Row -->
     <div class="grid grid-cols-4 lg:grid-cols-8 gap-2 mb-5">
       <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
@@ -98,7 +207,7 @@ function timeAgo(d: string) {
         <p class="text-xl font-bold text-white">{{ totalJobs }}</p>
       </div>
       <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
-        <p class="text-[9px] text-gray-500 uppercase">WFH</p>
+        <p class="text-[9px] text-gray-500 uppercase">Remote</p>
         <p class="text-xl font-bold text-green-400">{{ wfhJobs }}</p>
       </div>
       <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
@@ -111,7 +220,11 @@ function timeAgo(d: string) {
       </div>
       <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
         <p class="text-[9px] text-gray-500 uppercase">Applied</p>
-        <p class="text-xl font-bold text-blue-400">{{ totalApplied }}</p>
+        <p class="text-xl font-bold text-blue-400">{{ appliedListings || totalApplied }}</p>
+      </div>
+      <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
+        <p class="text-[9px] text-gray-500 uppercase">Dismissed</p>
+        <p class="text-xl font-bold text-red-400">{{ dismissedJobs }}</p>
       </div>
       <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
         <p class="text-[9px] text-gray-500 uppercase">Interviews</p>
@@ -120,10 +233,6 @@ function timeAgo(d: string) {
       <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
         <p class="text-[9px] text-gray-500 uppercase">Offers</p>
         <p class="text-xl font-bold text-green-400">{{ offers }}</p>
-      </div>
-      <div class="glass-dark rounded-lg p-3 border border-neural-700/50 text-center">
-        <p class="text-[9px] text-gray-500 uppercase">Response</p>
-        <p class="text-xl font-bold text-cyan-400">{{ responseRate }}%</p>
       </div>
     </div>
 
@@ -185,14 +294,30 @@ function timeAgo(d: string) {
       <div class="glass-dark rounded-xl p-4 border border-neural-700/50">
         <h3 class="text-[10px] text-gray-500 uppercase tracking-wider mb-3 font-medium">Quick Actions</h3>
         <div class="space-y-2">
-          <button @click="router.push({ name: 'admin-jobs-search' })" class="w-full px-3 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-xs font-medium hover:opacity-90 flex items-center gap-2">
-            <span>🔍</span> Search & Browse Jobs
+          <!-- Pull & Score CTA -->
+          <button @click="pullJobs" :disabled="isPulling"
+            class="w-full px-3 py-2.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-60"
+            :class="isPulling
+              ? 'bg-neural-700 border border-cyber-cyan/30 text-cyber-cyan'
+              : pullResult ? 'bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/15'
+              : 'bg-gradient-to-r from-cyber-purple/80 to-cyber-cyan/80 text-white hover:opacity-90'">
+            <span :class="isPulling ? 'animate-spin inline-block' : ''">{{ isPulling ? '⟳' : pullResult ? '✓' : '⬇' }}</span>
+            <span class="flex-1 text-left">{{ isPulling ? pullMsg || 'Pulling...' : pullResult ? `Pulled ${pullResult.saved} new, ${pullResult.updated} updated` : 'Pull & Score Fresh Jobs' }}</span>
           </button>
-          <button @click="router.push({ name: 'admin-jobs-agent' })" class="w-full px-3 py-2 bg-neural-700 text-gray-300 rounded-lg text-xs hover:bg-neural-600 flex items-center gap-2">
-            <span>🤖</span> Run AI Agent Pipeline
+          <!-- Pull progress msg when running -->
+          <p v-if="isPulling && pullMsg" class="text-[10px] text-cyber-cyan px-1 animate-pulse">{{ pullMsg }}</p>
+
+          <button @click="router.push({ name: 'admin-jobs-agent' })" class="w-full px-3 py-2 bg-gradient-to-r from-cyber-purple to-cyber-cyan text-white rounded-lg text-xs font-medium hover:opacity-90 flex items-center gap-2">
+            <span>🤖</span> Run AI Apply Pipeline
+          </button>
+          <button @click="router.push({ name: 'admin-jobs-search' })" class="w-full px-3 py-2 bg-neural-700 text-gray-300 rounded-lg text-xs hover:bg-neural-600 flex items-center gap-2">
+            <span>🔍</span> Search & Browse Jobs
           </button>
           <button @click="router.push({ name: 'admin-jobs-applications' })" class="w-full px-3 py-2 bg-neural-700 text-gray-300 rounded-lg text-xs hover:bg-neural-600 flex items-center gap-2">
             <span>📋</span> Track Applications
+          </button>
+          <button @click="router.push({ name: 'admin-jobs-platforms' })" class="w-full px-3 py-2 bg-neural-700 text-gray-300 rounded-lg text-xs hover:bg-neural-600 flex items-center gap-2">
+            <span>🔌</span> Platform Status
           </button>
           <button @click="router.push({ name: 'admin-jobs-profile' })" class="w-full px-3 py-2 bg-neural-700 text-gray-300 rounded-lg text-xs hover:bg-neural-600 flex items-center gap-2">
             <span>👤</span> Edit Profile & Skills

@@ -61,7 +61,9 @@ const sidebarLinks = [
   { name: 'admin-certificates', label: 'Certificates', icon: '🏆' },
   { name: 'admin-credentials', label: 'Credentials', icon: '🔐' },
   { name: 'admin-phantom', label: 'Phantom Report', icon: '👻' },
+  { name: 'admin-video-creation', label: 'Video Creation', icon: '🎬' },
   { name: 'admin-jobs', label: 'Jobs Pipeline', icon: '💼' },
+  { name: 'admin-jobs-session-logs', label: 'Session Logs', icon: '📋' },
 ]
 </script>
 

@@ -176,6 +176,13 @@ export interface JobListing {
   status: string
   notes: string | null
   raw_data: Record<string, unknown> | null
+  easy_apply?: boolean
+  applicant_count?: number | null
+  poster_name?: string | null
+  poster_linkedin_url?: string | null
+  ats_type?: string | null
+  recruiter_id?: string | null
+  vector_indexed?: boolean
   created_at: string
   updated_at: string
 }
@@ -218,6 +225,27 @@ export interface JobApplication {
   follow_up_at: string | null
   start_date: string | null
   notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChannelExecution {
+  id: string
+  application_id: string
+  job_listing_id: string
+  channel: 'job_board' | 'email' | 'company_portal' | 'form' | 'cold_outreach' | 'recruiter'
+  status: 'pending' | 'scheduled' | 'in_progress' | 'applied' | 'failed' | 'skipped'
+  tone: string | null
+  cover_letter_variant: string | null
+  target: string | null
+  platform: string | null
+  method: string | null
+  scheduled_at: string | null
+  executed_at: string | null
+  attempt_count: number
+  error_detail: string | null
+  screenshot_url: string | null
+  apply_log: Record<string, unknown>[]
   created_at: string
   updated_at: string
 }

@@ -4,8 +4,10 @@ import { useAdminStore } from '@/stores/admin'
 import { generateCoverLetter } from '@/utils/jobClassifyAgent'
 import { fillJobDetails, buildUpdatePayload } from '@/utils/jobDetailAgents'
 import { scrapeAllPlaywrightPlatforms, PLAYWRIGHT_PLATFORMS } from '@/utils/jobPlaywrightScraper'
+import JobCopilot from '@/components/admin/JobCopilot.vue'
 
 const admin = useAdminStore()
+const copilotOpen = ref(false)
 
 const agentRunning = ref(false)
 const agentPaused = ref(false)
@@ -35,8 +37,78 @@ const searchLocation = ref('Philippines, Remote')
 const minScore = ref(65)
 const schedule = ref('24h')
 const autoRunEnabled = ref(false)
+const autoApplyEnabled = ref(false)
 const lastRun = ref<string | null>(null)
 const nextRun = ref<string | null>(null)
+
+// Character References — selectable defaults for applications
+interface CharacterRef {
+  id: string
+  name: string
+  title: string
+  company: string
+  relationship: string
+  phone: string
+  email: string
+  selected: boolean
+}
+
+const characterRefs = ref<CharacterRef[]>([
+  { id: 'joy', name: 'Joy Nicole Canutab', title: 'Instructor, Department of Criminology', company: 'University of the Cordilleras', relationship: 'Academic Reference', phone: '+639934372943', email: 'jccanutab@uc-bcf.edu.ph', selected: true },
+  { id: 'lito', name: 'Lito Lozada', title: 'Full Stack Developer', company: 'Speech Improvement Center / Cessto Web Solutions', relationship: 'Colleague / Team Lead', phone: '09679206396', email: 'lito_lozada@cesstowebsolutions.com', selected: true },
+  { id: 'tony', name: 'Tony Ajhar', title: 'Lead Marketing', company: 'Access Insurance Underwriter, LLC', relationship: 'Direct Client / Supervisor', phone: '+1 (928) 916-7754', email: 'tony@accessvirtualstaffing.com', selected: true },
+  { id: 'david', name: 'David Rush', title: 'Chief Operating Officer', company: 'Access Insurance Underwriter, LLC', relationship: 'Direct Client / Executive', phone: '+1 (203) 246-8732', email: 'david@themorningrush.org', selected: false },
+  { id: 'phil', name: 'Phil Wardell', title: 'Chief Executive Officer', company: 'Access Insurance Underwriter, LLC', relationship: 'Direct Client / Executive', phone: '', email: '', selected: false },
+  { id: 'princess', name: 'Princess Sta. Ana', title: 'Marketing and Communications Director', company: 'Access Insurance Underwriter, LLC', relationship: 'Colleague / Director', phone: '+63 954 379 3909', email: 'cess.staana1619@gmail.com', selected: false },
+  { id: 'grace', name: 'Grace Z.', title: 'Virtual Assistant', company: 'Gcorp Industries', relationship: 'Colleague / Supervisor', phone: '09613893472', email: 'grace@gcorpindustries.ca', selected: true },
+  { id: 'mikel', name: 'Mikel Resaba', title: 'Content and SEO Manager', company: 'Liviti', relationship: 'Direct Supervisor / Project Lead', phone: '', email: 'mikel.resaba@liviti.com.au', selected: false },
+])
+const showAddRef = ref(false)
+const newRef = ref<Partial<CharacterRef>>({ name: '', title: '', company: '', relationship: '', phone: '', email: '' })
+
+function toggleRef(id: string) {
+  const ref = characterRefs.value.find(r => r.id === id)
+  if (ref) ref.selected = !ref.selected
+  saveCharacterRefs()
+}
+
+function addCharacterRef() {
+  if (!newRef.value.name) return
+  characterRefs.value.push({
+    id: Date.now().toString(),
+    name: newRef.value.name || '',
+    title: newRef.value.title || '',
+    company: newRef.value.company || '',
+    relationship: newRef.value.relationship || '',
+    phone: newRef.value.phone || '',
+    email: newRef.value.email || '',
+    selected: true,
+  })
+  newRef.value = { name: '', title: '', company: '', relationship: '', phone: '', email: '' }
+  showAddRef.value = false
+  saveCharacterRefs()
+}
+
+function removeRef(id: string) {
+  characterRefs.value = characterRefs.value.filter(r => r.id !== id)
+  saveCharacterRefs()
+}
+
+function saveCharacterRefs() {
+  localStorage.setItem('neuralyx_character_refs', JSON.stringify(characterRefs.value))
+}
+
+function loadCharacterRefs() {
+  const saved = localStorage.getItem('neuralyx_character_refs')
+  if (saved) {
+    try { characterRefs.value = JSON.parse(saved) } catch { /* use defaults */ }
+  }
+}
+
+// Used by apply orchestrator to get selected character references
+const getSelectedRefs = () => characterRefs.value.filter(r => r.selected)
+// Export for template usage
+void getSelectedRefs
 let autoRunTimer: ReturnType<typeof setInterval> | null = null
 
 const SCHEDULES = [
@@ -77,6 +149,8 @@ const PLATFORMS = [
   { id: 'remotive', name: 'Remotive', enabled: true, icon: '🏠', group: 'api' },
   { id: 'arbeitnow', name: 'Arbeitnow', enabled: true, icon: '🇪🇺', group: 'api' },
   { id: 'hackernews', name: 'HN/YC Jobs', enabled: true, icon: '🟧', group: 'api' },
+  { id: 'remoterocketship', name: 'RemoteRocketship', enabled: true, icon: '🚀', group: 'api' },
+  { id: 'jooble', name: 'Jooble', enabled: true, icon: '🔎', group: 'api' },
   // JSearch API
   { id: 'indeed', name: 'Indeed', enabled: true, icon: '🔵', group: 'jsearch' },
   { id: 'linkedin', name: 'LinkedIn', enabled: true, icon: '🟦', group: 'jsearch' },
@@ -100,6 +174,7 @@ const enabledCount = computed(() => Object.values(platformToggles.value).filter(
 
 let logRefreshTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
+  loadCharacterRefs()
   admin.fetchJobAgentLogs()
   // Auto-refresh logs every 10 seconds
   logRefreshTimer = setInterval(() => admin.fetchJobAgentLogs(), 10000)
@@ -235,8 +310,57 @@ async function runAgent() {
       await admin.fetchJobListings()
     }
 
+    // Step 6: Auto-Apply (browser + email) — only if toggle is ON
+    agentStep.value = 'apply'
+    agentProgress.value = 90
+    const applyJobs = admin.jobListings.filter(j =>
+      j.status === 'new' && j.match_score !== null && j.match_score >= 75 &&
+      (j.raw_data as Record<string, unknown>)?.cover_letter
+    )
+    let appliedCount = 0
+    if (!autoApplyEnabled.value) {
+      agentStatus.value = `Auto-Apply is OFF — ${applyJobs.length} jobs ready to apply (enable toggle to auto-apply)`
+    } else if (applyJobs.length > 0) {
+      agentStatus.value = `Auto-applying to ${Math.min(applyJobs.length, 10)} jobs...`
+
+      // Call orchestrate to split browser vs email
+      try {
+        const orchRes = await fetch(`${mcpUrl}/api/jobs/multi-orchestrate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_ids: applyJobs.slice(0, 10).map(j => j.id), mode: 'auto' }),
+          signal: AbortSignal.timeout(600000),
+        })
+        if (orchRes.ok) {
+          const orchData = await orchRes.json()
+          appliedCount = orchData.summary?.email_applied || 0
+
+          // Browser jobs: send to local apply server
+          if (orchData.browser_jobs?.length > 0) {
+            agentStatus.value = `Browser applying ${orchData.browser_jobs.length} jobs via Playwright...`
+            try {
+              const applyRes = await fetch('http://localhost:8081/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobs: orchData.browser_jobs }),
+                signal: AbortSignal.timeout(600000),
+              })
+              if (applyRes.ok) {
+                const applyData = await applyRes.json()
+                agentStatus.value = `Browser apply started: ${applyData.jobs || 0} jobs (PID: ${applyData.pid || '?'})`
+              }
+            } catch {
+              agentStatus.value += ' | Apply server not running — browser jobs skipped'
+            }
+          }
+        }
+      } catch { /* orchestrate failed */ }
+      await admin.fetchJobListings()
+      await admin.fetchJobApplications()
+    }
+
     agentProgress.value = 100; agentStep.value = 'done'
-    agentStatus.value = `${saved} new jobs, ${data.matched || 0} matched, ${irrelevant.length} dismissed, ${Math.min(topJobs.length, 10)} cover letters`
+    agentStatus.value = `${saved} new, ${data.matched || 0} matched, ${irrelevant.length} dismissed, ${Math.min(topJobs.length, 10)} covers, ${appliedCount} applied`
     lastRun.value = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   } catch (e) {
     agentStatus.value = `Error: ${e instanceof Error ? e.message : 'Pipeline failed'}`
@@ -271,16 +395,30 @@ function timeAgo(d: string) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 function stepIcon(step: string) {
-  const m: Record<string, string> = { search: '🔍', classify_match: '🎯', save: '💾', fill: '🤖', cleanup: '🧹', cover: '✉️', done: '✅', error: '❌' }
+  const m: Record<string, string> = { search: '🔍', classify_match: '🎯', save: '💾', fill: '🤖', cleanup: '🧹', cover: '✉️', apply: '🚀', done: '✅', error: '❌' }
   return m[step] || '⚙️'
 }
 </script>
 
 <template>
-  <div>
+  <div class="flex gap-6 h-full min-h-0">
+
+    <!-- Main panel -->
+    <div class="flex-1 min-w-0 overflow-y-auto">
+
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold text-white">AI Agent Control</h2>
-      <div class="text-xs text-gray-500">Pipeline: Search → Score → Fill → Cleanup → Cover Letters</div>
+      <div class="flex items-center gap-3">
+        <div class="text-xs text-gray-500">Pipeline: Search → Score → Fill → Cleanup → Cover Letters → Auto-Apply</div>
+        <button @click="copilotOpen = !copilotOpen"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+          :class="copilotOpen ? 'bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/30' : 'bg-neural-700/50 text-gray-400 border border-neural-700 hover:text-white'">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+          Copilot
+        </button>
+      </div>
     </div>
 
     <!-- Progress Bar (visible when running) -->
@@ -296,9 +434,9 @@ function stepIcon(step: string) {
         <div class="h-full bg-gradient-to-r from-cyber-purple to-cyber-cyan rounded-full transition-all duration-500" :style="{ width: agentProgress + '%' }" />
       </div>
       <div class="flex gap-4 mt-2">
-        <span v-for="s in ['search', 'save', 'fill', 'cleanup', 'cover']" :key="s"
+        <span v-for="s in ['search', 'save', 'fill', 'cleanup', 'cover', 'apply']" :key="s"
           class="text-[10px] flex items-center gap-1"
-          :class="agentStep === s ? 'text-cyber-purple font-medium' : agentStep === 'done' || ['search','save','fill','cleanup','cover'].indexOf(s) < ['search','save','fill','cleanup','cover'].indexOf(agentStep) ? 'text-green-400' : 'text-gray-600'">
+          :class="agentStep === s ? 'text-cyber-purple font-medium' : agentStep === 'done' || ['search','save','fill','cleanup','cover','apply'].indexOf(s) < ['search','save','fill','cleanup','cover','apply'].indexOf(agentStep) ? 'text-green-400' : 'text-gray-600'">
           {{ stepIcon(s) }} {{ s === 'classify_match' ? 'Match' : s.charAt(0).toUpperCase() + s.slice(1) }}
         </span>
       </div>
@@ -337,6 +475,70 @@ function stepIcon(step: string) {
           <p class="text-xs py-1.5" :class="autoRunEnabled ? 'text-green-400' : 'text-gray-600'">{{ nextRun || 'Not scheduled' }}</p>
         </div>
       </div>
+    </div>
+
+    <!-- Auto-Apply Control -->
+    <div class="glass-dark rounded-xl p-4 border border-neural-700/50 mb-5">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h3 class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Auto-Apply Control</h3>
+          <p class="text-[9px] text-gray-600 mt-0.5">When enabled, Step 6 will fire multi-channel applications after cover letter generation</p>
+        </div>
+        <button @click="autoApplyEnabled = !autoApplyEnabled"
+          class="px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2"
+          :class="autoApplyEnabled ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/20'">
+          <span class="w-2.5 h-2.5 rounded-full" :class="autoApplyEnabled ? 'bg-green-400 animate-pulse' : 'bg-red-500'" />
+          {{ autoApplyEnabled ? 'AUTO-APPLY ON' : 'AUTO-APPLY OFF' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Character References -->
+    <div class="glass-dark rounded-xl p-4 border border-neural-700/50 mb-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Character References (Default)</h3>
+        <button @click="showAddRef = !showAddRef" class="px-2 py-1 bg-cyber-purple/15 text-cyber-purple text-[9px] rounded hover:bg-cyber-purple/25">
+          {{ showAddRef ? 'Cancel' : '+ Add Reference' }}
+        </button>
+      </div>
+
+      <!-- Existing refs -->
+      <div class="space-y-2">
+        <div v-for="ref in characterRefs" :key="ref.id"
+          class="flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors cursor-pointer"
+          :class="ref.selected ? 'bg-green-500/10 border-green-500/30' : 'bg-neural-800/50 border-neural-700/30 opacity-60'"
+          @click="toggleRef(ref.id)">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
+            :class="ref.selected ? 'bg-green-500/20 text-green-400' : 'bg-neural-700 text-gray-500'">
+            {{ ref.selected ? '✓' : '○' }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-xs text-white font-medium">{{ ref.name }}</p>
+            <p class="text-[9px] text-gray-500">{{ ref.title }} · {{ ref.company }} · {{ ref.relationship }}</p>
+            <p v-if="ref.phone || ref.email" class="text-[8px] text-gray-600">{{ ref.phone }}{{ ref.phone && ref.email ? ' · ' : '' }}{{ ref.email }}</p>
+          </div>
+          <button @click.stop="removeRef(ref.id)" class="p-1 text-gray-600 hover:text-red-400 transition-colors" title="Remove">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Add new ref form -->
+      <div v-if="showAddRef" class="mt-3 p-3 bg-neural-800/50 rounded-lg border border-neural-700/30 space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <input v-model="newRef.name" placeholder="Full Name *" class="px-2.5 py-1.5 bg-neural-900 border border-neural-600 rounded text-white text-[11px] focus:border-cyber-purple focus:outline-none" />
+          <input v-model="newRef.title" placeholder="Job Title" class="px-2.5 py-1.5 bg-neural-900 border border-neural-600 rounded text-white text-[11px] focus:border-cyber-purple focus:outline-none" />
+          <input v-model="newRef.company" placeholder="Company" class="px-2.5 py-1.5 bg-neural-900 border border-neural-600 rounded text-white text-[11px] focus:border-cyber-purple focus:outline-none" />
+          <input v-model="newRef.relationship" placeholder="Relationship (e.g. Supervisor)" class="px-2.5 py-1.5 bg-neural-900 border border-neural-600 rounded text-white text-[11px] focus:border-cyber-purple focus:outline-none" />
+          <input v-model="newRef.phone" placeholder="Phone" class="px-2.5 py-1.5 bg-neural-900 border border-neural-600 rounded text-white text-[11px] focus:border-cyber-purple focus:outline-none" />
+          <input v-model="newRef.email" placeholder="Email" class="px-2.5 py-1.5 bg-neural-900 border border-neural-600 rounded text-white text-[11px] focus:border-cyber-purple focus:outline-none" />
+        </div>
+        <button @click="addCharacterRef" :disabled="!newRef.name" class="px-3 py-1.5 bg-cyber-purple/20 text-cyber-purple text-[10px] font-medium rounded hover:bg-cyber-purple/30 disabled:opacity-30">
+          Save Reference
+        </button>
+      </div>
+
+      <p class="text-[8px] text-gray-600 mt-2">{{ characterRefs.filter(r => r.selected).length }} selected as default · Click to toggle · Saved to browser</p>
     </div>
 
     <!-- Search Config + Run -->
@@ -483,5 +685,28 @@ function stepIcon(step: string) {
         </div>
       </div>
     </Teleport>
-  </div>
+
+    </div><!-- /main panel -->
+
+    <!-- Copilot Side Panel -->
+    <Transition name="copilot-slide">
+      <div v-if="copilotOpen" class="w-[380px] shrink-0 h-[calc(100vh-8rem)] sticky top-4">
+        <JobCopilot />
+      </div>
+    </Transition>
+
+  </div><!-- /flex wrapper -->
 </template>
+
+<style scoped>
+.copilot-slide-enter-active,
+.copilot-slide-leave-active {
+  transition: all 0.25s ease;
+}
+.copilot-slide-enter-from,
+.copilot-slide-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+  width: 0;
+}
+</style>

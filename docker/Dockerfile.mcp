@@ -1,7 +1,9 @@
 FROM node:20-alpine
 WORKDIR /app
 COPY mcp-server/package*.json ./
-RUN npm ci
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 — only need the CDP client, not browser binaries
+# Edge on the host machine is the browser, connected via host.docker.internal:9222
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 COPY mcp-server/ .
 RUN npm run build
 EXPOSE 8080

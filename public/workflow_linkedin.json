@@ -1,0 +1,415 @@
+{
+  "name": "NEURALYX LinkedIn Apply Agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-400, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 6 * * *" },
+            { "field": "cronExpression", "expression": "0 18 * * *" }
+          ]
+        }
+      },
+      "name": "Schedule: 6AM + 6PM PHT",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, 100]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "linkedin-pipeline",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook: Dashboard",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 500],
+      "webhookId": "neuralyx-linkedin-pipeline"
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/platform/check-session",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"platform\": \"linkedin\" }",
+        "options": { "timeout": 15000 }
+      },
+      "name": "N1. Session Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.valid }}", "value2": true }]
+        }
+      },
+      "name": "N2. Session Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/notifications/send",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"type\": \"session_expired\", \"platform\": \"linkedin\", \"message\": \"LinkedIn session expired. Open Edge Profile 7 and log in to LinkedIn, then re-run the pipeline.\" }",
+        "options": {}
+      },
+      "name": "N2b. Alert: Session Expired",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [160, 500]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  queries: [\n    'AI engineer remote Philippines',\n    'AI automation engineer remote',\n    'full stack developer AI remote',\n    'Python developer automation remote',\n    'Vue.js TypeScript developer remote',\n    'n8n automation developer remote'\n  ],\n  platforms: ['linkedin'],\n  location: 'Philippines',\n  days: 7,\n  easy_apply_only: true,\n  count: 25\n}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "name": "N3. Search LinkedIn Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [420, 300]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/classify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ jobs: $json.jobs || $json.results || [] }) }}",
+        "options": { "timeout": 120000 }
+      },
+      "name": "N4. Score & Classify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Filter: score >= 40, not applied, LinkedIn Easy Apply only\nconst jobs = $json.jobs || $json.classified || $json.results || [];\nconst qualified = [];\n\nfor (const job of jobs) {\n  const score = job.match_score || job.score || 0;\n  if (score < 40) continue;\n  if (job.status === 'applied' || job.already_applied) continue;\n  if (job.expired) continue;\n  const platform = (job.platform || '').toLowerCase();\n  if (!platform.includes('linkedin')) continue;\n  if (!job.easy_apply && job.application_type !== 'linkedin_easy_apply') continue;\n\n  qualified.push({\n    json: {\n      id: job.id || job.job_id,\n      title: job.title,\n      company: job.company,\n      url: job.url,\n      platform: 'linkedin',\n      score,\n      easy_apply: job.easy_apply || true,\n      poster_name: job.poster_name || null,\n      poster_linkedin_url: job.poster_linkedin_url || null,\n      applicant_count: job.applicant_count || null,\n      description: (job.description || '').substring(0, 3000),\n      location: job.location || 'Remote',\n      ats_type: job.ats_type || null\n    }\n  });\n}\n\nif (qualified.length === 0) {\n  return [{ json: { _empty: true, total_searched: jobs.length, message: 'No qualified LinkedIn Easy Apply jobs found' } }];\n}\n\n// Sort by score DESC, cap at 25/run\nqualified.sort((a, b) => b.json.score - a.json.score);\nreturn qualified.slice(0, 25);"
+      },
+      "name": "N5. Filter & Sort",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json._empty }}", "value2": true }]
+        }
+      },
+      "name": "N6. Any Jobs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Research this company for a job application:\n\nJob: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation: {{ $json.location }}\nJob Description: {{ $json.description }}\n\nProvide:\n1. Company overview (2-3 sentences: what they do, size, stage)\n2. Tech stack / tools they use (based on JD clues)\n3. Key pain point this role solves\n4. Tone of the company (startup/corporate/agency)\n5. Any red flags (vague JD, unrealistic expectations, etc.)\n\nBe concise. Output as JSON: { company_overview, tech_stack, pain_point, company_tone, red_flags, skip_recommended }",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a company research agent for Gabriel Aquino's job search. Gabriel is an AI Systems Engineer with 8+ years experience. He targets remote AI/automation/fullstack roles paying PHP 80k-150k/mo. Skip jobs at outsourcing agencies, BPOs, or roles requiring on-site Manila."
+        }
+      },
+      "name": "N7. Company Intel Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1460, 200]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Check if Company Intel Agent recommends skipping\nconst intel = $json.output || $json;\nlet parsed = intel;\nif (typeof intel === 'string') {\n  try { parsed = JSON.parse(intel) } catch { parsed = { skip_recommended: false } }\n}\n\nif (parsed.skip_recommended) {\n  return [{ json: { _skip: true, reason: parsed.red_flags || 'Company intel recommends skip', ...$('N5. Filter & Sort').first().json } }];\n}\n\nreturn [{ json: {\n  ...$('N5. Filter & Sort').first().json,\n  company_intel: parsed\n} }];"
+      },
+      "name": "N7b. Skip Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 200]
+    },
+
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Find the recruiter or hiring manager for this job posting on LinkedIn.\n\nJob: {{ $json.title }}\nCompany: {{ $json.company }}\nPoster from LinkedIn: {{ $json.poster_name || 'Not shown' }}\nPoster LinkedIn URL: {{ $json.poster_linkedin_url || 'Not shown' }}\n\nIf poster info is available, use it directly.\nOtherwise, search for: \"[company] hiring manager [title] LinkedIn site:linkedin.com/in/\"\n\nReturn JSON: { found: boolean, recruiter_name, recruiter_first_name, recruiter_title, recruiter_linkedin_url, recruiter_email, email_confidence: 'confirmed'|'guessed'|'none', company_domain }",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a recruiter discovery agent. Your goal is to find the name and contact info of the hiring manager or recruiter for a specific job. LinkedIn poster info is the most reliable source. For email guessing: use firstname@domain or firstname.lastname@domain patterns."
+        }
+      },
+      "name": "N8. Recruiter Discovery Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1980, 200]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/linkedin/save-recruiter",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  ...($json.output || $json),\n  job_id: $('N7b. Skip Check').first().json.id\n}) }}",
+        "options": { "timeout": 10000 }
+      },
+      "name": "N8b. Save Recruiter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 200]
+    },
+
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate a personalized cover letter for this LinkedIn Easy Apply application.\n\nJob: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation: {{ $json.location }}\nJob Description: {{ $json.description }}\nCompany Intel: {{ JSON.stringify($json.company_intel || {}) }}\nRecruiter Name: {{ $json.recruiter_first_name || 'Hiring Team' }}\n\nGabriel's profile:\n- AI Systems Engineer & Automation Developer | 8+ years\n- Built NEURALYX: 48 integrated services, 7 autonomous agents, 5 Docker containers\n- Automated 95% of content workflows for LIVITI using n8n + OpenAI\n- Built job pipeline processing 90+ listings in 8 seconds\n- Stack: Vue.js, TypeScript, Python, Node.js, Docker, Supabase, OpenAI, LangChain, FastAPI, n8n\n- Portfolio: https://neuralyx.ai.dev-environment.site\n- Salary expectation: PHP 80k-150k/mo\n\nRules:\n1. 200-250 words MAX\n2. Lead with the specific pain point this company has that Gabriel solves\n3. 2 proof points with metrics (from profile above)\n4. End with clear ask for interview\n5. Professional but not stiff — direct and confident\n6. Do NOT use generic phrases like 'I am writing to express my interest'\n\nOutput: cover letter text only, no subject line",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You write precise, compelling cover letters for Gabriel Aquino's job applications. Every letter is unique, references the specific company, and leads with value — not background."
+        }
+      },
+      "name": "N9. Cover Letter Generator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [2500, 200]
+    },
+
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate a personalized LinkedIn connection request note (MAX 300 characters) for a recruiter.\n\nRecruiter: {{ $json.recruiter_first_name || 'there' }}\nCompany: {{ $json.company }}\nJob: {{ $json.title }}\nGabriel applied via Easy Apply just now.\n\nNote style:\n- Personal, not spammy\n- Reference the specific role\n- 1 compelling hook about Gabriel\n- Natural ask to connect\n- MUST be under 300 characters (LinkedIn hard limit)\n\nOutput: note text only, no quotes",
+        "hasOutputParser": false,
+        "options": {}
+      },
+      "name": "N10. Connection Note Generator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [2500, 400]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/apply",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  platform: 'linkedin',\n  job_url: $('N7b. Skip Check').first().json.url,\n  job_id: $('N7b. Skip Check').first().json.id,\n  job_title: $('N7b. Skip Check').first().json.title,\n  company: $('N7b. Skip Check').first().json.company,\n  cover_letter: $('N9. Cover Letter Generator').first().json.output || $('N9. Cover Letter Generator').first().json.text || ''\n}) }}",
+        "options": { "timeout": 180000 }
+      },
+      "name": "N11. Apply (Easy Apply)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2760, 300]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Route based on apply result\nconst result = $json;\nconst status = result.status || 'failed';\n\nconst job = $('N7b. Skip Check').first().json;\nconst recruiter = $('N8. Recruiter Discovery Agent').first().json?.output || {};\nconst connectionNote = $('N10. Connection Note Generator').first().json?.output || $('N10. Connection Note Generator').first().json?.text || '';\n\nreturn [{ json: {\n  apply_status: status,\n  apply_result: result,\n  job_id: job.id,\n  job_title: job.title,\n  company: job.company,\n  job_url: job.url,\n  platform: 'linkedin',\n  recruiter_linkedin_url: recruiter.recruiter_linkedin_url || job.poster_linkedin_url,\n  recruiter_id: result.recruiter_id || null,\n  connection_note: connectionNote,\n  should_connect: !!(recruiter.recruiter_linkedin_url || job.poster_linkedin_url),\n  should_email: !!(recruiter.recruiter_email && recruiter.email_confidence !== 'none')\n} }];"
+      },
+      "name": "N12. Route Apply Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3020, 300]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.apply_status }}", "operation": "equals", "value2": "applied" }]
+        }
+      },
+      "name": "N13. Apply Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3280, 300]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.should_connect }}", "value2": true }]
+        }
+      },
+      "name": "N14. Has Recruiter URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3540, 200]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/linkedin/connect",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  recruiter_url: $json.recruiter_linkedin_url,\n  note: $json.connection_note,\n  recruiter_id: $json.recruiter_id\n}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "name": "N15. Send Connection Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3800, 200]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/auto-apply/browser",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  job_id: $('N12. Route Apply Result').first().json.job_id,\n  job_title: $('N12. Route Apply Result').first().json.job_title,\n  company: $('N12. Route Apply Result').first().json.company,\n  platform: 'linkedin',\n  status: $('N12. Route Apply Result').first().json.apply_status,\n  method: $('N12. Route Apply Result').first().json.apply_result?.method || 'linkedin_easy_apply',\n  detail: $('N12. Route Apply Result').first().json.apply_result?.detail || '',\n  applied_url: $('N12. Route Apply Result').first().json.job_url,\n  connection_sent: $json.success || false\n}) }}",
+        "options": { "timeout": 15000 }
+      },
+      "name": "N16. Save Application",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4060, 300]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/vector/upsert",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  job_id: $('N12. Route Apply Result').first().json.job_id,\n  text: ($('N7b. Skip Check').first().json.title + ' ' + $('N7b. Skip Check').first().json.company + ' ' + ($('N7b. Skip Check').first().json.description || '')).substring(0, 8000),\n  cover_letter: $('N9. Cover Letter Generator').first().json.output || ''\n}) }}",
+        "options": { "timeout": 30000 }
+      },
+      "name": "N17. Index Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4320, 300]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/node-status",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  step: 'linkedin_apply_complete',\n  status: 'success',\n  job_title: $('N12. Route Apply Result').first().json.job_title,\n  company: $('N12. Route Apply Result').first().json.company,\n  platform: 'linkedin',\n  message: '✅ Applied + indexed: ' + $('N12. Route Apply Result').first().json.job_title + ' @ ' + $('N12. Route Apply Result').first().json.company\n}) }}",
+        "options": {}
+      },
+      "name": "N18. SSE: Success Broadcast",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4580, 300]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/node-status",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  step: 'linkedin_apply_failed',\n  status: 'error',\n  job_title: $('N12. Route Apply Result').first().json.job_title,\n  company: $('N12. Route Apply Result').first().json.company,\n  platform: 'linkedin',\n  apply_status: $('N12. Route Apply Result').first().json.apply_status,\n  message: '❌ Apply failed: ' + $('N12. Route Apply Result').first().json.job_title + ' — ' + ($('N12. Route Apply Result').first().json.apply_result?.detail || 'unknown error')\n}) }}",
+        "options": {}
+      },
+      "name": "N13b. SSE: Failure Broadcast",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3540, 420]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/node-status",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"step\": \"linkedin_no_jobs\", \"status\": \"info\", \"platform\": \"linkedin\", \"message\": \"LinkedIn search found no qualifying Easy Apply jobs this run\" }",
+        "options": {}
+      },
+      "name": "N6b. SSE: No Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 500]
+    }
+  ],
+
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "N1. Session Check", "type": "main", "index": 0 }]] },
+    "Schedule: 6AM + 6PM PHT": { "main": [[{ "node": "N1. Session Check", "type": "main", "index": 0 }]] },
+    "Webhook: Dashboard": { "main": [[{ "node": "N1. Session Check", "type": "main", "index": 0 }]] },
+    "N1. Session Check": { "main": [[{ "node": "N2. Session Valid?", "type": "main", "index": 0 }]] },
+    "N2. Session Valid?": {
+      "main": [
+        [{ "node": "N3. Search LinkedIn Jobs", "type": "main", "index": 0 }],
+        [{ "node": "N2b. Alert: Session Expired", "type": "main", "index": 0 }]
+      ]
+    },
+    "N3. Search LinkedIn Jobs": { "main": [[{ "node": "N4. Score & Classify", "type": "main", "index": 0 }]] },
+    "N4. Score & Classify": { "main": [[{ "node": "N5. Filter & Sort", "type": "main", "index": 0 }]] },
+    "N5. Filter & Sort": { "main": [[{ "node": "N6. Any Jobs?", "type": "main", "index": 0 }]] },
+    "N6. Any Jobs?": {
+      "main": [
+        [{ "node": "N6b. SSE: No Jobs", "type": "main", "index": 0 }],
+        [{ "node": "N7. Company Intel Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "N7. Company Intel Agent": { "main": [[{ "node": "N7b. Skip Check", "type": "main", "index": 0 }]] },
+    "N7b. Skip Check": { "main": [[{ "node": "N8. Recruiter Discovery Agent", "type": "main", "index": 0 }]] },
+    "N8. Recruiter Discovery Agent": { "main": [[{ "node": "N8b. Save Recruiter", "type": "main", "index": 0 }]] },
+    "N8b. Save Recruiter": {
+      "main": [[
+        { "node": "N9. Cover Letter Generator", "type": "main", "index": 0 },
+        { "node": "N10. Connection Note Generator", "type": "main", "index": 0 }
+      ]]
+    },
+    "N9. Cover Letter Generator": { "main": [[{ "node": "N11. Apply (Easy Apply)", "type": "main", "index": 0 }]] },
+    "N10. Connection Note Generator": { "main": [[{ "node": "N11. Apply (Easy Apply)", "type": "main", "index": 0 }]] },
+    "N11. Apply (Easy Apply)": { "main": [[{ "node": "N12. Route Apply Result", "type": "main", "index": 0 }]] },
+    "N12. Route Apply Result": { "main": [[{ "node": "N13. Apply Succeeded?", "type": "main", "index": 0 }]] },
+    "N13. Apply Succeeded?": {
+      "main": [
+        [{ "node": "N14. Has Recruiter URL?", "type": "main", "index": 0 }],
+        [{ "node": "N13b. SSE: Failure Broadcast", "type": "main", "index": 0 }]
+      ]
+    },
+    "N14. Has Recruiter URL?": {
+      "main": [
+        [{ "node": "N15. Send Connection Request", "type": "main", "index": 0 }],
+        [{ "node": "N16. Save Application", "type": "main", "index": 0 }]
+      ]
+    },
+    "N15. Send Connection Request": { "main": [[{ "node": "N16. Save Application", "type": "main", "index": 0 }]] },
+    "N16. Save Application": { "main": [[{ "node": "N17. Index Embedding", "type": "main", "index": 0 }]] },
+    "N17. Index Embedding": { "main": [[{ "node": "N18. SSE: Success Broadcast", "type": "main", "index": 0 }]] }
+  },
+
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "neuralyx"
+  }
+}

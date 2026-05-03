@@ -1,0 +1,275 @@
+{
+  "name": "NEURALYX Indeed Apply Agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-400, 300]
+    },
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] }
+      },
+      "name": "Schedule: Every 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, 100]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "indeed-pipeline",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook: Dashboard",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 500],
+      "webhookId": "neuralyx-indeed-pipeline"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  queries: [\n    'AI engineer remote',\n    'full stack developer remote',\n    'automation engineer remote',\n    'Python developer remote Philippines',\n    'Vue.js developer remote',\n    'DevOps engineer remote'\n  ],\n  platforms: ['indeed'],\n  count: 20,\n  freshness_days: 7\n}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "name": "1. Search Indeed Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/classify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ jobs: $json.jobs || $json.results || [] }) }}",
+        "options": { "timeout": 120000 }
+      },
+      "name": "2. Score & Classify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter: score >= 40, not applied, not expired, Indeed only\nconst jobs = $json.jobs || $json.classified || $json.results || [];\nconst qualified = [];\n\nfor (const job of jobs) {\n  const score = job.match_score || job.score || 0;\n  if (score < 40) continue;\n  if (job.status === 'applied' || job.already_applied) continue;\n  if (job.expired) continue;\n  \n  const platform = (job.platform || 'indeed').toLowerCase();\n  if (!platform.includes('indeed')) continue;\n\n  qualified.push({\n    json: {\n      id: job.id || job.job_id,\n      title: job.title,\n      company: job.company,\n      url: job.url,\n      jk: (job.url || '').match(/jk=([a-f0-9]+)/)?.[1] || '',\n      platform: 'indeed',\n      score,\n      description: (job.description || '').substring(0, 3000),\n      location: job.location || 'Remote',\n      salary: job.salary || ''\n    }\n  });\n}\n\nif (qualified.length === 0) {\n  return [{ json: { _empty: true, total_searched: jobs.length, message: 'No qualified Indeed jobs found' } }];\n}\n\nreturn qualified;"
+      },
+      "name": "3. Filter & Dedup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json._empty }}", "value2": true }]
+        }
+      },
+      "name": "4. Any Jobs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: true, message: `No qualified jobs found (searched ${$('3. Filter & Dedup').first().json.total_searched || 0})`, timestamp: new Date().toISOString() } }];"
+      },
+      "name": "No Jobs → Done",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/cover-letter",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  title: $json.title,\n  company: $json.company,\n  description: $json.description,\n  skills: [\n    'Python', 'TypeScript', 'AI/ML', 'LLM', 'RAG',\n    'Docker', 'PostgreSQL', 'Vue.js', 'React', 'Node.js',\n    'n8n', 'Automation', 'MCP', 'FastAPI', 'DevOps'\n  ]\n}) }}",
+        "options": { "timeout": 45000 }
+      },
+      "name": "5. Generate Cover Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge cover letter + job + answer engine config\nconst job = $('4. Any Jobs?').first().json;\nconst coverLetter = $json.cover_letter || $json.coverLetter || '';\n\nreturn [{\n  json: {\n    job_url: job.url,\n    jk: job.jk,\n    job_title: job.title,\n    company: job.company,\n    cover_letter: coverLetter,\n    description: job.description,\n    score: job.score,\n    dry_run: false\n  }\n}];"
+      },
+      "name": "6. Build Apply Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/node-status",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  node: 'apply_start',\n  status: 'running',\n  job_title: $json.job_title,\n  company: $json.company,\n  score: $json.score,\n  message: `Applying: ${$json.job_title} @ ${$json.company} (score: ${$json.score})`,\n  timestamp: new Date().toISOString()\n}) }}",
+        "options": { "timeout": 5000 }
+      },
+      "name": "7. SSE: Applying...",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1460, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/indeed/form-apply",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  job_url: $('6. Build Apply Payload').first().json.job_url,\n  jk: $('6. Build Apply Payload').first().json.jk,\n  job_title: $('6. Build Apply Payload').first().json.job_title,\n  company: $('6. Build Apply Payload').first().json.company,\n  cover_letter: $('6. Build Apply Payload').first().json.cover_letter,\n  dry_run: $('6. Build Apply Payload').first().json.dry_run\n}) }}",
+        "options": { "timeout": 180000 }
+      },
+      "name": "8. Playwright: Form Fill",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1720, 420],
+      "notesInFlow": true,
+      "notes": "Edge CDP port 9222\n→ Click Apply\n→ Contact Info (verify)\n→ Location (verify)\n→ Resume (select)\n→ Employer Questions (Answer Engine)\n→ Cover Letter (Supporting Docs)\n→ Review & Submit"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "output": 0,
+              "conditions": { "conditions": [{ "leftValue": "={{ $json.status }}", "rightValue": "applied", "operator": { "type": "string", "operation": "equals" } }] }
+            },
+            {
+              "output": 1,
+              "conditions": { "conditions": [{ "leftValue": "={{ $json.status }}", "rightValue": "captcha", "operator": { "type": "string", "operation": "equals" } }] }
+            }
+          ],
+          "fallbackOutput": 2
+        },
+        "options": {}
+      },
+      "name": "9. Result?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2000, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/auto-apply/browser",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  job_title: $('6. Build Apply Payload').first().json.job_title,\n  company: $('6. Build Apply Payload').first().json.company,\n  platform: 'indeed',\n  url: $('6. Build Apply Payload').first().json.job_url,\n  status: 'applied',\n  method: 'n8n_indeed_agent',\n  detail: `Applied via n8n. Filled: ${($json.filled || []).length} fields. Cover letter: ${($('6. Build Apply Payload').first().json.cover_letter || '').length} chars`,\n  cover_letter: $('6. Build Apply Payload').first().json.cover_letter\n}) }}",
+        "options": { "timeout": 15000 }
+      },
+      "name": "10a. Save: Applied ✓",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/node-status",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  node: 'captcha_alert',\n  status: 'needs_manual',\n  job_title: $('6. Build Apply Payload').first().json.job_title,\n  company: $('6. Build Apply Payload').first().json.company,\n  detail: $json.detail || 'reCAPTCHA image challenge — solve manually in Edge then re-trigger',\n  timestamp: new Date().toISOString()\n}) }}",
+        "options": { "timeout": 5000 }
+      },
+      "name": "10b. Alert: CAPTCHA ⚠",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/auto-apply/browser",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  job_title: $('6. Build Apply Payload').first().json.job_title,\n  company: $('6. Build Apply Payload').first().json.company,\n  platform: 'indeed',\n  url: $('6. Build Apply Payload').first().json.job_url,\n  status: 'apply_failed',\n  method: 'n8n_indeed_agent',\n  detail: `Failed: ${$json.detail || $json.error || 'Unknown'}`\n}) }}",
+        "options": { "timeout": 15000 }
+      },
+      "name": "10c. Save: Failed ✗",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 640]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/api/jobs/node-status",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  node: 'apply_complete',\n  status: 'success',\n  job_title: $('6. Build Apply Payload').first().json.job_title,\n  company: $('6. Build Apply Payload').first().json.company,\n  application_id: $json.application_id,\n  message: `✓ Applied: ${$('6. Build Apply Payload').first().json.job_title} @ ${$('6. Build Apply Payload').first().json.company}`,\n  timestamp: new Date().toISOString()\n}) }}",
+        "options": { "timeout": 5000 }
+      },
+      "name": "11. SSE: Done ✓",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2580, 260]
+    },
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "name": "Throttle 15s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2580, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final batch summary\nconst items = $input.all();\nconst applied = items.filter(i => i.json.status === 'applied' || i.json.application_id).length;\nconst failed = items.filter(i => !i.json.status || i.json.status !== 'applied').length;\n\nreturn [{\n  json: {\n    success: true,\n    total_processed: items.length,\n    applied,\n    failed,\n    message: `Pipeline complete. Applied: ${applied}, Failed: ${failed}`,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "12. Batch Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2840, 420]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "1. Search Indeed Jobs", "type": "main", "index": 0 }]] },
+    "Schedule: Every 6h": { "main": [[{ "node": "1. Search Indeed Jobs", "type": "main", "index": 0 }]] },
+    "Webhook: Dashboard": { "main": [[{ "node": "1. Search Indeed Jobs", "type": "main", "index": 0 }]] },
+    "1. Search Indeed Jobs": { "main": [[{ "node": "2. Score & Classify", "type": "main", "index": 0 }]] },
+    "2. Score & Classify": { "main": [[{ "node": "3. Filter & Dedup", "type": "main", "index": 0 }]] },
+    "3. Filter & Dedup": { "main": [[{ "node": "4. Any Jobs?", "type": "main", "index": 0 }]] },
+    "4. Any Jobs?": {
+      "main": [
+        [{ "node": "No Jobs → Done", "type": "main", "index": 0 }],
+        [{ "node": "5. Generate Cover Letter", "type": "main", "index": 0 }]
+      ]
+    },
+    "5. Generate Cover Letter": { "main": [[{ "node": "6. Build Apply Payload", "type": "main", "index": 0 }]] },
+    "6. Build Apply Payload": { "main": [[{ "node": "7. SSE: Applying...", "type": "main", "index": 0 }]] },
+    "7. SSE: Applying...": { "main": [[{ "node": "8. Playwright: Form Fill", "type": "main", "index": 0 }]] },
+    "8. Playwright: Form Fill": { "main": [[{ "node": "9. Result?", "type": "main", "index": 0 }]] },
+    "9. Result?": {
+      "main": [
+        [{ "node": "10a. Save: Applied ✓", "type": "main", "index": 0 }],
+        [{ "node": "10b. Alert: CAPTCHA ⚠", "type": "main", "index": 0 }],
+        [{ "node": "10c. Save: Failed ✗", "type": "main", "index": 0 }]
+      ]
+    },
+    "10a. Save: Applied ✓": { "main": [[{ "node": "11. SSE: Done ✓", "type": "main", "index": 0 }]] },
+    "10b. Alert: CAPTCHA ⚠": { "main": [[{ "node": "Throttle 15s", "type": "main", "index": 0 }]] },
+    "10c. Save: Failed ✗": { "main": [[{ "node": "Throttle 15s", "type": "main", "index": 0 }]] },
+    "11. SSE: Done ✓": { "main": [[{ "node": "Throttle 15s", "type": "main", "index": 0 }]] },
+    "Throttle 15s": { "main": [[{ "node": "12. Batch Summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  }
+}

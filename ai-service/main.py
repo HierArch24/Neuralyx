@@ -471,6 +471,175 @@ async def score_one_job(req: ScoreOneRequest):
         return ScoreOneResponse(score=0, method="error")
 
 
+# ─── Semantic Chunking + RAG ───
+
+import re
+
+class ChunkJobRequest(BaseModel):
+    job_id: str
+    title: str
+    company: str
+    description: str
+
+class ChunkJobResponse(BaseModel):
+    job_id: str
+    chunks: list[dict]
+    total_chunks: int
+    stored: bool = False
+
+def semantic_chunk_jd(text: str) -> list[dict]:
+    """Split job description into semantic chunks by section"""
+    clean = re.sub(r'<[^>]+>', ' ', text).replace('\n', ' ').strip()
+    clean = re.sub(r'\s+', ' ', clean)
+
+    chunks = []
+    # Try to detect sections by common headings
+    section_patterns = [
+        (r'(?:responsibilities|what you.?ll do|your role|key duties)[:\s]*(.*?)(?=(?:requirements|qualifications|what we|skills|benefits|about|nice to have|why join|$))', 'responsibilities'),
+        (r'(?:requirements|qualifications|what we.?re looking for|must have|required)[:\s]*(.*?)(?=(?:nice to have|benefits|about|why join|responsibilities|$))', 'requirements'),
+        (r'(?:nice to have|preferred|bonus|plus)[:\s]*(.*?)(?=(?:benefits|about|why join|$))', 'preferred_skills'),
+        (r'(?:benefits|perks|what we offer|compensation)[:\s]*(.*?)(?=(?:about|why join|how to apply|$))', 'benefits'),
+        (r'(?:about (?:us|the company|the role)|company|who we are)[:\s]*(.*?)(?=(?:responsibilities|requirements|benefits|$))', 'company_info'),
+    ]
+
+    for pattern, chunk_type in section_patterns:
+        matches = re.findall(pattern, clean, re.IGNORECASE | re.DOTALL)
+        for match in matches:
+            text_clean = match.strip()
+            if len(text_clean) > 30:
+                chunks.append({'type': chunk_type, 'text': text_clean[:2000]})
+
+    # If no sections detected, create a general chunk
+    if not chunks:
+        chunks.append({'type': 'full', 'text': clean[:3000]})
+
+    return chunks
+
+@app.post("/semantic/chunk-job", response_model=ChunkJobResponse)
+async def chunk_job(req: ChunkJobRequest):
+    """Split job description into semantic chunks and optionally embed + store"""
+    chunks = semantic_chunk_jd(req.description)
+
+    # Embed each chunk if model available
+    model = get_embedding_model()
+    stored = False
+    if model:
+        supabase_url = os.environ.get("SUPABASE_URL", os.environ.get("MCP_SERVER_URL", ""))
+        supabase_key = os.environ.get("SUPABASE_ANON_KEY", "")
+
+        if supabase_url and supabase_key:
+            for chunk in chunks:
+                embedding = model.encode([chunk['text']], normalize_embeddings=True)[0]
+                chunk['embedding_dim'] = len(embedding)
+
+                # Store to Supabase pgvector
+                try:
+                    async with httpx.AsyncClient() as client:
+                        await client.post(
+                            f"{supabase_url}/rest/v1/job_embeddings",
+                            headers={
+                                "apikey": supabase_key,
+                                "Authorization": f"Bearer {supabase_key}",
+                                "Content-Type": "application/json",
+                                "Prefer": "return=minimal",
+                            },
+                            json={
+                                "job_listing_id": req.job_id,
+                                "chunk_type": chunk['type'],
+                                "chunk_text": chunk['text'],
+                                "embedding": embedding.tolist(),
+                            },
+                            timeout=10.0,
+                        )
+                    stored = True
+                except:
+                    pass
+
+    return ChunkJobResponse(job_id=req.job_id, chunks=chunks, total_chunks=len(chunks), stored=stored)
+
+
+class RAGCoverLetterRequest(BaseModel):
+    job_id: str
+    title: str
+    company: str
+    description: str
+    skills: list[str] = []
+
+class RAGCoverLetterResponse(BaseModel):
+    cover_letter: str
+    rag_context: str
+    chunks_used: int
+
+@app.post("/rag/cover-letter", response_model=RAGCoverLetterResponse)
+async def rag_cover_letter(req: RAGCoverLetterRequest):
+    """Generate cover letter using RAG — retrieve relevant chunks + past successful applications"""
+    model = get_embedding_model()
+    if not model:
+        raise HTTPException(status_code=503, detail="Embedding model not available")
+
+    # Embed the job description
+    job_embedding = model.encode([req.description[:2000]], normalize_embeddings=True)[0]
+
+    # Find similar past jobs from FAISS if available
+    rag_context_parts = []
+    chunks_used = 0
+
+    if faiss_index is not None and len(faiss_job_ids) > 0:
+        scores, indices = faiss_index.search(np.array([job_embedding], dtype='float32'), min(5, len(faiss_job_ids)))
+        for idx, score in zip(indices[0], scores[0]):
+            if idx >= 0 and score > 0.4:
+                jid = faiss_job_ids[idx]
+                if jid in faiss_job_cache:
+                    cached = faiss_job_cache[jid]
+                    rag_context_parts.append(f"Similar role: {cached.get('title', '?')} (similarity: {score:.2f})")
+                    chunks_used += 1
+
+    # Semantic chunk the current job
+    chunks = semantic_chunk_jd(req.description)
+    for chunk in chunks[:3]:
+        # Find best matching domain
+        best_domain = ""
+        best_score = 0
+        for domain_name, domain_emb in domain_embeddings.items():
+            chunk_emb = model.encode([chunk['text']], normalize_embeddings=True)[0]
+            sim = float(np.dot(chunk_emb, domain_emb))
+            if sim > best_score:
+                best_score = sim
+                best_domain = domain_name
+
+        if best_domain:
+            rag_context_parts.append(f"Key requirement ({chunk['type']}): matches your {best_domain.replace('_', ' ')} expertise (score: {best_score:.2f})")
+            chunks_used += 1
+
+    rag_context = "\n".join(rag_context_parts) if rag_context_parts else "No similar past applications found."
+
+    # Generate enhanced cover letter using MCP server
+    mcp_url = os.environ.get("MCP_SERVER_URL", "http://neuralyx-mcp:8080")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{mcp_url}/api/jobs/cover-letter",
+                json={
+                    "title": req.title,
+                    "company": req.company,
+                    "description": f"{req.description}\n\n[RAG Context — use to personalize]\n{rag_context}",
+                    "skills": req.skills,
+                },
+                timeout=60.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return RAGCoverLetterResponse(
+                    cover_letter=data.get("cover_letter", ""),
+                    rag_context=rag_context,
+                    chunks_used=chunks_used,
+                )
+    except:
+        pass
+
+    return RAGCoverLetterResponse(cover_letter="", rag_context=rag_context, chunks_used=chunks_used)
+
+
 @app.get("/health")
 async def health():
     nlm_available = False

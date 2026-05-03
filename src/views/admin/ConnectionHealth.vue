@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 type ConnectionStatus = 'active' | 'configured' | 'limited' | 'error' | 'offline'
 
@@ -15,84 +15,167 @@ interface Connection {
 
 const viewMode = ref<'table' | 'cards'>('cards')
 
+// ─── Live health checks ───
+const liveStatuses = ref<Record<string, ConnectionStatus>>({})
+
+async function checkUrl(url: string, timeout = 4000): Promise<'active' | 'offline'> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(timeout) })
+    return r.ok ? 'active' : 'offline'
+  } catch { return 'offline' }
+}
+
+async function runHealthChecks() {
+  const checks: Record<string, () => Promise<ConnectionStatus>> = {
+    'mcp-server': async () => await checkUrl('http://localhost:8080/'),
+    'frontend': async () => await checkUrl('http://localhost:3000/'),
+    'postgres': async () => { try { await fetch('http://localhost:8080/api/health', { signal: AbortSignal.timeout(3000) }); return 'active' } catch { return 'offline' } },
+    'gaze': async () => await checkUrl('http://localhost:7881/'),
+    'sadtalker': async () => await checkUrl('http://localhost:7860/'),
+    'voxcpm': async () => await checkUrl('http://localhost:7861/'),
+    'whisper': async () => await checkUrl('http://localhost:7870/'),
+    'n8n': async () => await checkUrl('http://localhost:5678/'),
+    'searxng': async () => await checkUrl('http://localhost:8888/'),
+    'browserless': async () => await checkUrl('http://localhost:3333/'),
+    'browser-harness': async () => await checkUrl('http://localhost:7880/'),
+    'browser-use': async () => await checkUrl('http://localhost:7882/'),
+    'ai-service': async () => await checkUrl('http://localhost:8090/'),
+    'supabase': async () => await checkUrl('https://phpdxvaowytijhvclljb.supabase.co/rest/v1/', 5000),
+  }
+
+  for (const [key, fn] of Object.entries(checks)) {
+    liveStatuses.value[key] = await fn()
+  }
+}
+
 const connections = ref<Connection[]>([
-  // Infrastructure
-  { id: 1, name: 'PostgreSQL 17', type: 'Database', category: 'infrastructure', status: 'configured', detail: 'Docker container neuralyx-postgres', endpoint: 'localhost:5432' },
-  { id: 2, name: 'Nginx', type: 'Web Server', category: 'infrastructure', status: 'configured', detail: 'Docker container neuralyx-frontend', endpoint: 'localhost:3000' },
-  { id: 3, name: 'Docker Compose', type: 'Container Orchestration', category: 'infrastructure', status: 'configured', detail: '3 services: frontend, postgres, mcp-server', endpoint: 'docker-compose.yml' },
+  // ═══════════════════════════════════════════════════════
+  // INFRASTRUCTURE — Docker Services
+  // ═══════════════════════════════════════════════════════
+  { id: 1, name: 'neuralyx-postgres', type: 'Database', category: 'infrastructure', status: 'active', detail: 'pgvector/pgvector:17 — Primary DB with vector embeddings', endpoint: 'localhost:5432' },
+  { id: 2, name: 'neuralyx-frontend', type: 'Web Server', category: 'infrastructure', status: 'active', detail: 'Vue 3 + Nginx — Portfolio frontend', endpoint: 'localhost:3000' },
+  { id: 3, name: 'neuralyx-mcp', type: 'MCP Server', category: 'infrastructure', status: 'active', detail: 'Node.js MCP server — API endpoints, Supabase tools, job pipeline', endpoint: 'localhost:8080' },
+  { id: 4, name: 'neuralyx-gaze', type: 'AI Service', category: 'infrastructure', status: 'active', detail: 'Gaze correction sidecar — WarpCNN model, Maxine cloud fallback', endpoint: 'localhost:7881' },
+  { id: 5, name: 'neuralyx-sadtalker', type: 'AI Service', category: 'infrastructure', status: 'configured', detail: 'SadTalker lip-sync engine — CPU mode (AMD Radeon 760M)', endpoint: 'localhost:7860' },
+  { id: 6, name: 'neuralyx-voxcpm', type: 'AI Service', category: 'infrastructure', status: 'configured', detail: 'VoxCPM voice clone — CosyVoice2-0.5B, CPU mode', endpoint: 'localhost:7861' },
+  { id: 7, name: 'neuralyx-whisper', type: 'AI Service', category: 'infrastructure', status: 'configured', detail: 'faster-whisper transcription — large-v3-turbo (int8 CPU)', endpoint: 'localhost:7870' },
+  { id: 8, name: 'neuralyx-n8n', type: 'Workflow Engine', category: 'infrastructure', status: 'active', detail: 'n8n workflow automation — job pipeline, email, auto-apply', endpoint: 'localhost:5678' },
+  { id: 9, name: 'neuralyx-searxng', type: 'Search Engine', category: 'infrastructure', status: 'active', detail: 'SearXNG meta-search — AI content research', endpoint: 'localhost:8888' },
+  { id: 10, name: 'neuralyx-browser', type: 'Browser', category: 'infrastructure', status: 'configured', detail: 'Browserless Chrome — free self-hosted, 2 concurrent', endpoint: 'localhost:3333' },
+  { id: 11, name: 'neuralyx-browser-harness', type: 'Browser Agent', category: 'infrastructure', status: 'configured', detail: 'AI-driven apply fallback — Claude-driven CDP to Edge', endpoint: 'localhost:7880' },
+  { id: 12, name: 'neuralyx-browser-use', type: 'Browser Agent', category: 'infrastructure', status: 'configured', detail: 'browser-use library — Tier-3 real browser escalation', endpoint: 'localhost:7882' },
+  { id: 13, name: 'neuralyx-ai', type: 'AI Service', category: 'infrastructure', status: 'active', detail: 'AI service wrapper — connects to MCP server', endpoint: 'localhost:8090' },
 
-  // Backend Services
-  { id: 4, name: 'Supabase', type: 'Backend-as-a-Service', category: 'backend', status: 'limited', detail: 'Free tier limit hit (2/2 projects). Org: celrcwsysxnxabscdjcq', endpoint: 'supabase.co' },
-  { id: 5, name: 'MCP Server', type: 'AI Integration Server', category: 'backend', status: 'configured', detail: 'Node 20 Alpine, Supabase tools', endpoint: 'localhost:8080' },
+  // ═══════════════════════════════════════════════════════
+  // MCP SERVERS — 14 Configured in .mcp.json
+  // ═══════════════════════════════════════════════════════
+  { id: 14, name: 'Supabase MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Database, auth, storage — project phpdxvaowytijhvclljb', endpoint: 'mcp.supabase.com/mcp' },
+  { id: 15, name: 'Playwright MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Browser automation — Microsoft Edge control', endpoint: 'npx @playwright/mcp' },
+  { id: 16, name: 'n8n MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Workflow automation orchestration — localhost:5678', endpoint: 'npx n8n-mcp' },
+  { id: 17, name: 'n8n-workflows MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Direct n8n workflow definitions & execution', endpoint: 'localhost:5678/mcp-server/http' },
+  { id: 18, name: 'HeyGen MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'AI video generation — interview/presentation content', endpoint: 'mcp.heygen.com/mcp/v1/' },
+  { id: 19, name: 'GitHub MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Repo management, PR creation, issue tracking, code review', endpoint: 'npx server-github' },
+  { id: 20, name: 'Memory MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Persistent context — store/retrieve project knowledge', endpoint: 'npx server-memory' },
+  { id: 21, name: 'Sequential Thinking MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Complex reasoning — step-by-step structured thought chains', endpoint: 'npx server-sequential-thinking' },
+  { id: 22, name: 'Context7 MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'API/library documentation lookup for unfamiliar packages', endpoint: 'npx context7-mcp' },
+  { id: 23, name: 'Filesystem MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Batch file operations, search, metadata beyond standard tools', endpoint: 'npx server-filesystem' },
+  { id: 24, name: 'Token Optimizer MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Context window optimization — compression, summarization', endpoint: 'npx token-optimizer-mcp' },
+  { id: 25, name: 'Vercel MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Deployment management, preview URLs, env variables', endpoint: 'mcp.vercel.com' },
+  { id: 26, name: 'Skill Seekers MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Doc/repo/PDF ingestion → searchable knowledge (pip v3.5.1)', endpoint: 'python skill_seekers.mcp' },
+  { id: 27, name: 'DesignLang MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Design token extraction, Tailwind config, shadcn components', endpoint: 'npx designlang --mcp' },
 
-  // MCP Connections
-  { id: 6, name: 'GitHub MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Repository management, PR creation, issue tracking', endpoint: 'mcp__github__*' },
-  { id: 7, name: 'Claude Preview MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Browser preview, screenshots, console logs', endpoint: 'mcp__Claude_Preview__*' },
-  { id: 8, name: 'Chrome MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Browser automation, page interaction', endpoint: 'mcp__Claude_in_Chrome__*' },
-  { id: 9, name: 'Neuralyx MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Project management, sections, skills, tools', endpoint: 'mcp__neuralyx__*' },
-  { id: 10, name: 'MCP Registry', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Search and suggest MCP connectors', endpoint: 'mcp__mcp-registry__*' },
-  { id: 11, name: 'Scheduled Tasks MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Create, list, update scheduled tasks', endpoint: 'mcp__scheduled-tasks__*' },
+  // ═══════════════════════════════════════════════════════
+  // SKILLS — 6 Top-Level + Sub-Skills
+  // ═══════════════════════════════════════════════════════
+  { id: 28, name: 'Superpowers (14 skills)', type: 'Methodology', category: 'skills', status: 'active', detail: 'obra/superpowers v5.0.7 — spec-driven dev, TDD, subagent execution, systematic debugging, parallel agents', endpoint: '.claude/skills/superpowers/' },
+  { id: 29, name: 'ECC Universal (182 skills)', type: 'Knowledge Base', category: 'skills', status: 'active', detail: 'everything-claude-code — 182 skills, 48 agents, 27 rules', endpoint: 'node_modules/ecc-universal/' },
+  { id: 30, name: 'Karpathy Wiki', type: 'Skill', category: 'skills', status: 'active', detail: 'Auto-maintained project knowledge wiki — compacts old entries, adds discoveries', endpoint: '.claude/skills/karpathy-wiki/' },
+  { id: 31, name: 'SEO/GEO (20 skills)', type: 'Skill Suite', category: 'skills', status: 'active', detail: 'Search optimization — keyword research, audits, content writing, schema markup', endpoint: '.claude/skills/seo-geo/' },
+  { id: 32, name: 'Caveman', type: 'Skill', category: 'skills', status: 'active', detail: 'JuliusBrussee/caveman — code analysis + token-efficient compression', endpoint: '.claude/skills/caveman/' },
+  { id: 33, name: 'claude-mem', type: 'Tool', category: 'skills', status: 'active', detail: 'Session memory — auto-captures, compresses, injects context (npm v10.6.3)', endpoint: 'npm global: claude-mem' },
 
-  // Skills & AI Agents
-  { id: 12, name: 'GSD Workflow', type: 'Skill Suite', category: 'skills', status: 'active', detail: '30+ skills: planning, execution, verification, debugging', endpoint: 'gsd:*' },
-  { id: 13, name: 'Gstack', type: 'Skill', category: 'skills', status: 'active', detail: 'Headless browser QA, testing, design review', endpoint: 'gstack' },
-  { id: 14, name: 'Anthropic Skills', type: 'Skill Suite', category: 'skills', status: 'active', detail: 'PDF, XLSX, DOCX, PPTX, scheduling, skill-creator', endpoint: 'anthropic-skills:*' },
-  { id: 15, name: 'Python Expert', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Django, FastAPI, Flask backend expert', endpoint: 'python-expert' },
-  { id: 16, name: 'Claude API Skill', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Anthropic SDK, Agent SDK integration', endpoint: 'claude-api' },
+  // ═══════════════════════════════════════════════════════
+  // AGENTS — 3 Defined
+  // ═══════════════════════════════════════════════════════
+  { id: 34, name: 'Browser Agent', type: 'Agent', category: 'ai-agent', status: 'active', detail: 'Edge automation — BrowserMCP + Playwright, 12+ platforms logged in', endpoint: '.claude/agents/browser.md' },
+  { id: 35, name: 'Auto-Apply Agent', type: 'Agent', category: 'ai-agent', status: 'active', detail: 'Job auto-apply — Indeed, JobStreet, Kalibrr, company portals, email', endpoint: '.claude/agents/auto-apply.md' },
+  { id: 36, name: 'Indeed-Apply Agent', type: 'Agent', category: 'ai-agent', status: 'active', detail: 'Indeed Easy Apply specialist — answer engine, screenshot proof', endpoint: '.claude/agents/indeed-apply.md' },
 
-  // Tech Stack
-  { id: 17, name: 'Vue 3', type: 'Framework', category: 'tech-stack', status: 'active', detail: 'v3.5.30 + TypeScript 5.9', endpoint: 'package.json' },
-  { id: 18, name: 'Vite 8', type: 'Build Tool', category: 'tech-stack', status: 'active', detail: 'Dev server port 3000, HMR', endpoint: 'vite.config.ts' },
-  { id: 19, name: 'Tailwind CSS v4', type: 'Styling', category: 'tech-stack', status: 'active', detail: '@tailwindcss/vite plugin', endpoint: 'src/style.css' },
-  { id: 20, name: 'GSAP 3.14', type: 'Animation', category: 'tech-stack', status: 'active', detail: 'ScrollTrigger, parallax, warped text', endpoint: 'src/lib/gsap-setup.ts' },
-  { id: 21, name: 'Lenis', type: 'Smooth Scroll', category: 'tech-stack', status: 'active', detail: 'v1.3.19', endpoint: 'src/composables/useSmoothScroll.ts' },
-  { id: 22, name: 'Pinia', type: 'State Management', category: 'tech-stack', status: 'active', detail: 'v3.0.4 - content, auth, admin stores', endpoint: 'src/stores/' },
-  { id: 23, name: 'Vue Router 4', type: 'Routing', category: 'tech-stack', status: 'active', detail: 'v4.6.4 - History mode, auth guards', endpoint: 'src/router/index.ts' },
+  // ═══════════════════════════════════════════════════════
+  // JOB PIPELINE AGENTS (MCP Server Internal)
+  // ═══════════════════════════════════════════════════════
+  { id: 37, name: 'Scout Agent', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Job discovery — 11 platforms via JSearch, Adzuna, Playwright', endpoint: '/api/jobs/agent/run' },
+  { id: 38, name: 'Classifier Agent', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Role type detection — FullStack/AI/ML/DevOps/Freelance', endpoint: '/api/jobs/classify' },
+  { id: 39, name: 'Matcher Agent', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Hybrid scoring — 50% semantic + 30% keyword + 20% structured (pgvector)', endpoint: '/api/jobs/match' },
+  { id: 40, name: 'Research Agent', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Company intel — website, reviews, tech stack, red flags', endpoint: '/api/jobs/research' },
+  { id: 41, name: 'Writer Agent', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'RAG cover letter — portfolio signals + past successful applications', endpoint: '/api/jobs/cover-letter' },
+  { id: 42, name: 'Applier Agent', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Auto-submit — LinkedIn MCP, Playwright form-fill, Easy Apply', endpoint: '/api/jobs/apply' },
+  { id: 43, name: 'Nurture Agent', type: 'AI Agent', category: 'ai-agent', status: 'active', detail: 'Follow-up tracking — ghosted detection (30d), status monitoring', endpoint: '/api/jobs/nurture' },
 
-  // Git & Deployment
-  { id: 24, name: 'GitHub (HierArch24)', type: 'Git Remote', category: 'deployment', status: 'configured', detail: 'SSH: git@github.com-hierarch24:HierArch24/NEURALYX.git', endpoint: 'github.com' },
-  { id: 25, name: 'CLI-Anything', type: 'CLI Tool', category: 'ai-agent', status: 'configured', detail: 'HKUDS/CLI-Anything - Agent-native CLI', endpoint: '~/.claude/tools/cli-anything' },
+  // ═══════════════════════════════════════════════════════
+  // AI MODELS & APIs
+  // ═══════════════════════════════════════════════════════
+  { id: 44, name: 'OpenAI GPT-5.2', type: 'AI Model', category: 'ai-model', status: 'limited', detail: 'Article generation, classification, cover letters, DALL-E 3 thumbnails', endpoint: 'api.openai.com' },
+  { id: 45, name: 'Google Gemini 2.0', type: 'AI Model', category: 'ai-model', status: 'active', detail: 'Fallback AI — Vertex key, content generation', endpoint: 'generativelanguage.googleapis.com' },
+  { id: 46, name: 'Anthropic Claude', type: 'AI Model', category: 'ai-model', status: 'active', detail: 'Browser harness AI decisions, cover letter generation', endpoint: 'api.anthropic.com' },
+  { id: 47, name: 'Hugging Face', type: 'AI Platform', category: 'ai-model', status: 'active', detail: 'Model downloads — VoxCPM, Whisper, SadTalker checkpoints', endpoint: 'huggingface.co' },
 
-  // Job Pipeline AI Agents
-  { id: 26, name: 'Scout Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Job discovery across 11 platforms (JSearch, Adzuna, JobSpy, Playwright)', endpoint: '/api/jobs/agent/run' },
-  { id: 27, name: 'Classifier Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Detects role type (FullStack/AI/ML/DevOps/Freelance) + company bucket', endpoint: '/api/jobs/classify' },
-  { id: 28, name: 'Matcher Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Hybrid scoring: 50% semantic + 30% keyword + 20% structured (pgvector)', endpoint: '/api/jobs/match' },
-  { id: 29, name: 'Research Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Company intel: website, Glassdoor reviews, tech stack, red flags', endpoint: '/api/jobs/research' },
-  { id: 30, name: 'Writer Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'RAG cover letter gen using portfolio signals + past successful applications', endpoint: '/api/jobs/cover-letter' },
-  { id: 31, name: 'Applier Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Auto-submit via LinkedIn MCP, Playwright form-fill, Easy Apply', endpoint: '/api/jobs/apply' },
-  { id: 32, name: 'Nurture Agent', type: 'AI Agent', category: 'ai-agent', status: 'configured', detail: 'Follow-up tracking, ghosted detection (30d), status monitoring', endpoint: '/api/jobs/nurture' },
+  // ═══════════════════════════════════════════════════════
+  // BACKEND SERVICES & APIs
+  // ═══════════════════════════════════════════════════════
+  { id: 48, name: 'Supabase', type: 'Backend-as-a-Service', category: 'backend', status: 'active', detail: 'Database, auth, storage, realtime — project phpdxvaowytijhvclljb', endpoint: 'phpdxvaowytijhvclljb.supabase.co' },
+  { id: 49, name: 'pgvector', type: 'Vector Database', category: 'backend', status: 'active', detail: 'Semantic search — resume-job matching, deduplication, RAG', endpoint: 'Supabase extension' },
+  { id: 50, name: 'JSearch API', type: 'Job Aggregator', category: 'backend', status: 'active', detail: 'RapidAPI — Indeed+LinkedIn+Glassdoor+ZipRecruiter+Google (500K/mo)', endpoint: 'jsearch.p.rapidapi.com' },
+  { id: 51, name: 'Adzuna API', type: 'Job Aggregator', category: 'backend', status: 'active', detail: 'Job search — 12+ countries, salary data, categories', endpoint: 'developer.adzuna.com' },
+  { id: 52, name: 'Jooble API', type: 'Job Aggregator', category: 'backend', status: 'active', detail: 'Job search API — global job listings', endpoint: 'jooble.org' },
+  { id: 53, name: 'SMTP (ifastnet)', type: 'Email', category: 'backend', status: 'active', detail: 'Email notifications — portfolio@neuralyx.ai.dev-environment.site', endpoint: 'dev-environment.site:465' },
 
-  // Job Pipeline MCP Servers
-  { id: 33, name: 'JobSpy MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: 'Multi-platform scraper: Indeed, LinkedIn, Glassdoor, ZipRecruiter, Google', endpoint: 'jobspy-mcp-server' },
-  { id: 34, name: 'Indeed MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: 'Official Indeed integration: search, details, resume, company data', endpoint: 'indeed-mcp-api.Indeed.com/sse' },
-  { id: 35, name: 'LinkedIn MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: '12 tools: jobs, profiles, inbox, messages, connect, apply', endpoint: 'linkedin-scraper-mcp' },
-  { id: 36, name: 'Adzuna MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: '7 tools: search, salary, categories, companies, geo (12+ countries)', endpoint: 'adzuna-mcp' },
-  { id: 37, name: 'Apify JobStreet MCP', type: 'MCP Server', category: 'mcp', status: 'configured', detail: 'JobStreet/SEEK scraping across Asia-Pacific', endpoint: '@apify/actors-mcp-server' },
-  { id: 38, name: 'Supabase MCP', type: 'MCP Server', category: 'mcp', status: 'active', detail: 'Database management, migrations, SQL execution', endpoint: 'mcp__claude_ai_Supabase__*' },
+  // ═══════════════════════════════════════════════════════
+  // TECH STACK
+  // ═══════════════════════════════════════════════════════
+  { id: 54, name: 'Vue 3', type: 'Framework', category: 'tech-stack', status: 'active', detail: 'v3.5+ with TypeScript — Composition API, <script setup>', endpoint: 'package.json' },
+  { id: 55, name: 'Vite', type: 'Build Tool', category: 'tech-stack', status: 'active', detail: 'Dev server port 3000, HMR, Tailwind plugin', endpoint: 'vite.config.ts' },
+  { id: 56, name: 'Tailwind CSS v4', type: 'Styling', category: 'tech-stack', status: 'active', detail: 'Utility-first CSS — cyber theme colors', endpoint: 'src/style.css' },
+  { id: 57, name: 'Pinia', type: 'State Management', category: 'tech-stack', status: 'active', detail: 'Stores: content, auth, admin, job', endpoint: 'src/stores/' },
+  { id: 58, name: 'Vue Router 4', type: 'Routing', category: 'tech-stack', status: 'active', detail: 'History mode, auth guards, admin routes', endpoint: 'src/router/index.ts' },
+  { id: 59, name: 'GSAP 3', type: 'Animation', category: 'tech-stack', status: 'active', detail: 'ScrollTrigger, parallax, warped text', endpoint: 'src/lib/gsap-setup.ts' },
+  { id: 60, name: 'Lenis', type: 'Smooth Scroll', category: 'tech-stack', status: 'active', detail: 'Smooth scrolling experience', endpoint: 'src/composables/useSmoothScroll.ts' },
+  { id: 61, name: 'Supabase JS', type: 'SDK', category: 'tech-stack', status: 'active', detail: 'Database client — CRUD operations, realtime subscriptions', endpoint: '@supabase/supabase-js' },
 
-  // Additional Tech Stack
-  { id: 39, name: 'OTPAuth', type: 'Security', category: 'tech-stack', status: 'active', detail: 'TOTP 2FA (Google Authenticator) for Credentials Vault', endpoint: 'otpauth + qrcode' },
-  { id: 40, name: 'OpenAI GPT-5.2', type: 'AI Model', category: 'ai-agent', status: 'limited', detail: 'Article generation, classification, matching, cover letters (Excis key)', endpoint: 'api.openai.com' },
-  { id: 41, name: 'Google Gemini 2.0', type: 'AI Model', category: 'ai-agent', status: 'configured', detail: 'Fallback when OpenAI quota exceeded (Vertex key)', endpoint: 'generativelanguage.googleapis.com' },
-  { id: 42, name: 'microlink.io', type: 'Screenshot API', category: 'backend', status: 'active', detail: 'URL screenshots for news article thumbnails (free, no auth)', endpoint: 'api.microlink.io' },
-  { id: 43, name: 'DALL-E 3', type: 'Image Generation', category: 'ai-agent', status: 'limited', detail: 'AI thumbnail generation for news articles (OpenAI key required)', endpoint: 'api.openai.com/v1/images' },
-  { id: 44, name: 'pgvector', type: 'Vector Database', category: 'backend', status: 'configured', detail: 'Semantic search: resume-job matching, deduplication, RAG retrieval', endpoint: 'Supabase extension' },
-  { id: 45, name: 'JSearch API', type: 'Job Aggregator', category: 'backend', status: 'configured', detail: 'RapidAPI: Indeed+LinkedIn+Glassdoor+ZipRecruiter+Google Jobs (500K req/mo)', endpoint: 'jsearch.p.rapidapi.com' },
-  { id: 46, name: 'Playwright', type: 'Browser Automation', category: 'backend', status: 'configured', detail: 'Auto-apply for OnlineJobs.ph, Bossjob, Kalibrr, Facebook Jobs', endpoint: 'playwright chromium' },
+  // ═══════════════════════════════════════════════════════
+  // GIT & DEPLOYMENT
+  // ═══════════════════════════════════════════════════════
+  { id: 62, name: 'GitHub (HierArch24)', type: 'Git Remote', category: 'deployment', status: 'active', detail: 'SSH: git@github.com-hierarch24:HierArch24/NEURALYX.git', endpoint: 'github.com' },
+  { id: 63, name: 'Docker Compose', type: 'Container Orchestration', category: 'deployment', status: 'active', detail: '13 services — frontend, postgres, mcp, gaze, sadtalker, voxcpm, whisper, n8n, searxng, browser, browser-harness, browser-use, ai', endpoint: 'docker-compose.yml' },
+  { id: 64, name: 'cPanel (Live)', type: 'Hosting', category: 'deployment', status: 'active', detail: 'neuralyx.ai.dev-environment.site — rsync deploy', endpoint: 'sv70.ifastnet.com:2083' },
+  { id: 65, name: 'GitHub Actions CI/CD', type: 'Pipeline', category: 'deployment', status: 'active', detail: 'Auto build + deploy on push to main', endpoint: '.github/workflows/build.yml' },
 
-  // Deployment
-  { id: 47, name: 'cPanel (Live)', type: 'Hosting', category: 'deployment', status: 'active', detail: 'neuralyx.ai.dev-environment.site via rsync deploy', endpoint: 'sv70.ifastnet.com:2083' },
-  { id: 48, name: 'GitHub Actions CI/CD', type: 'Pipeline', category: 'deployment', status: 'active', detail: 'Auto build + deploy on push to main', endpoint: '.github/workflows/build.yml' },
+  // ═══════════════════════════════════════════════════════
+  // INSTALLED PACKAGES (npm global + pip)
+  // ═══════════════════════════════════════════════════════
+  { id: 66, name: 'claude-mem', type: 'npm Global', category: 'packages', status: 'active', detail: 'v10.6.3 — Session memory & context injection', endpoint: 'npm -g' },
+  { id: 67, name: '@playwright/mcp', type: 'npm Global', category: 'packages', status: 'active', detail: 'v0.0.70 — Browser automation MCP', endpoint: 'npm -g' },
+  { id: 68, name: 'n8n-mcp', type: 'npm Global', category: 'packages', status: 'active', detail: 'v2.35.5 — n8n workflow MCP', endpoint: 'npm -g' },
+  { id: 69, name: '@qwen-code/qwen-code', type: 'npm Global', category: 'packages', status: 'active', detail: 'v0.15.6-nightly — Qwen Code CLI', endpoint: 'npm -g' },
+  { id: 70, name: '@anthropic-ai/claude-code', type: 'npm Global', category: 'packages', status: 'active', detail: 'v2.1.126 — Claude Code CLI', endpoint: 'npm -g' },
+  { id: 71, name: '@musistudio/claude-code-router', type: 'npm Global', category: 'packages', status: 'active', detail: 'v2.0.0 — Multi-model routing & fallback', endpoint: 'npm -g' },
+  { id: 72, name: 'skill-seekers', type: 'pip', category: 'packages', status: 'active', detail: 'v3.5.1 — Documentation ingestion MCP', endpoint: 'pip' },
+  { id: 73, name: 'langchain', type: 'pip', category: 'packages', status: 'active', detail: 'v1.2.11 — LLM chains & agents', endpoint: 'pip' },
+  { id: 74, name: 'langgraph', type: 'pip', category: 'packages', status: 'active', detail: 'v1.1.0 — Agent graph orchestration', endpoint: 'pip' },
+  { id: 75, name: 'agentscope', type: 'pip', category: 'packages', status: 'active', detail: 'v1.0.18 — Multi-agent orchestration', endpoint: 'pip' },
+  { id: 76, name: 'ecc-universal', type: 'npm Local', category: 'packages', status: 'active', detail: 'ECC rules, skills, agents source package', endpoint: 'node_modules/ecc-universal/' },
 ])
 
 const categories = [
-  { value: 'infrastructure', label: 'Infrastructure' },
-  { value: 'backend', label: 'Backend Services' },
-  { value: 'mcp', label: 'MCP Servers' },
-  { value: 'skills', label: 'Skills & Workflows' },
-  { value: 'ai-agent', label: 'AI Agents' },
-  { value: 'tech-stack', label: 'Tech Stack' },
-  { value: 'deployment', label: 'Git & Deployment' },
+  { value: 'infrastructure', label: '🐳 Docker Services' },
+  { value: 'mcp', label: '🔌 MCP Servers' },
+  { value: 'skills', label: '🧠 Skills & Tools' },
+  { value: 'ai-agent', label: '🤖 AI Agents' },
+  { value: 'ai-model', label: '🧬 AI Models' },
+  { value: 'backend', label: '⚙️ Backend & APIs' },
+  { value: 'tech-stack', label: '💻 Tech Stack' },
+  { value: 'deployment', label: '🚀 Git & Deployment' },
+  { value: 'packages', label: '📦 Installed Packages' },
 ]
 
 const selectedCategory = ref<string>('all')
@@ -144,6 +227,8 @@ function statusDot(status: string) {
 function categoryLabel(cat: string) {
   return categories.find(c => c.value === cat)?.label || cat
 }
+
+onMounted(() => { runHealthChecks() })
 </script>
 
 <template>
@@ -151,14 +236,35 @@ function categoryLabel(cat: string) {
     <div class="flex items-center justify-between mb-8">
       <div>
         <h2 class="text-2xl font-bold text-white">Connection Health</h2>
-        <p class="text-gray-400 text-sm mt-1">All configured services, MCP servers, skills, and tech stack for this project</p>
+        <p class="text-gray-400 text-sm mt-1">76 configured services, MCP servers, skills, agents, and packages — live status checks</p>
       </div>
-      <button
-        @click="viewMode = viewMode === 'table' ? 'cards' : 'table'"
-        class="px-3 py-2 bg-neural-700 hover:bg-neural-600 text-gray-300 rounded-lg text-sm transition-colors"
-      >
-        {{ viewMode === 'table' ? 'Card View' : 'Table View' }}
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          @click="runHealthChecks()"
+          class="px-3 py-2 bg-cyber-purple/20 hover:bg-cyber-purple/30 text-cyber-purple rounded-lg text-sm transition-colors flex items-center gap-1.5"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Refresh
+        </button>
+        <button
+          @click="viewMode = viewMode === 'table' ? 'cards' : 'table'"
+          class="px-3 py-2 bg-neural-700 hover:bg-neural-600 text-gray-300 rounded-lg text-sm transition-colors"
+        >
+          {{ viewMode === 'table' ? 'Card View' : 'Table View' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Docker Status Bar -->
+    <div class="mb-6 p-4 bg-neural-800/80 border border-neural-600 rounded-xl">
+      <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-3 font-semibold">Live Docker Service Status</p>
+      <div class="flex flex-wrap gap-3">
+        <div v-for="(status, key) in liveStatuses" :key="key" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+             :class="status === 'active' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'">
+          <span class="w-2 h-2 rounded-full" :class="status === 'active' ? 'bg-green-400 animate-pulse' : 'bg-red-400'"></span>
+          {{ key }}
+        </div>
+      </div>
     </div>
 
     <!-- Status Summary Cards -->

@@ -1,0 +1,2 @@
+# Coqui TTS bundles all dependencies — no additional packages needed
+# This file kept for reference only

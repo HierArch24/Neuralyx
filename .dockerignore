@@ -1,8 +1,15 @@
-node_modules
-dist
+**/node_modules
+public
+src
 .git
 .env
 .env.local
 *.md
 .vscode
 .idea
+monitor-storage-state.json
+mcp-server/node_modules
+ai-service/__pycache__
+ai-service/.venv
+*.log
+*.tmp

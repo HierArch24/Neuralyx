@@ -1,0 +1,28 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# torch 2.4.1 CPU
+RUN pip install --no-cache-dir \
+    "torch==2.4.1" "torchaudio==2.4.1" \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Coqui TTS — XTTS-v2 zero-shot voice clone
+RUN pip install --no-cache-dir "TTS==0.22.0"
+
+# TTS pulls transformers>=4.40 which dropped BeamSearchScorer — pin back
+RUN pip install --no-cache-dir "transformers>=4.33.0,<4.40.0"
+
+COPY docker/voxcpm/server.py /app/server.py
+
+ENV CPU_ONLY=1
+ENV PORT=7861
+# Cache model downloads to mounted volume
+ENV TTS_HOME=/app/tts_models
+
+EXPOSE 7861
+CMD ["python", "/app/server.py"]

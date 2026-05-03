@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "faster-whisper==1.0.3" \
+    "fastapi==0.115.0" \
+    "uvicorn[standard]==0.30.6" \
+    "python-multipart==0.0.9" \
+    "requests>=2.31"
+
+COPY docker/whisper/server.py /app/server.py
+
+ENV WHISPER_MODEL=large-v3-turbo
+ENV WHISPER_DEVICE=cpu
+ENV WHISPER_COMPUTE_TYPE=int8
+ENV WHISPER_CACHE=/app/models
+ENV PORT=7870
+
+EXPOSE 7870
+CMD ["python", "/app/server.py"]

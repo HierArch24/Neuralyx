@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import JobCopilot from '@/components/admin/JobCopilot.vue'
 
 const auth = useAuthStore()
 const sidebarOpen = ref(true)
+const copilotOpen = ref(false)
 
 // Phantom Chat
 const phantomOpen = ref(false)
@@ -41,6 +43,9 @@ const sidebarLinks = [
   { name: 'admin-jobs-platforms', label: 'Platforms', icon: '🔌' },
   { name: 'admin-jobs-agent', label: 'AI Agent', icon: '🤖' },
   { name: 'admin-jobs-api', label: 'API Usage', icon: '📡' },
+  { name: 'admin-jobs-node-report', label: 'Node Report', icon: '📝' },
+  { name: 'admin-jobs-session-logs', label: 'Session Logs', icon: '📜' },
+  { name: 'admin-jobs-monitor', label: 'Monitor', icon: '🖥️' },
 ]
 </script>
 
@@ -132,6 +137,12 @@ const sidebarLinks = [
           <h1 class="text-lg font-semibold text-white">Job Application Pipeline</h1>
         </div>
         <div class="flex items-center gap-3">
+          <button @click="copilotOpen = !copilotOpen"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border"
+            :class="copilotOpen ? 'bg-cyber-purple/20 text-cyber-purple border-cyber-purple/40' : 'hover:bg-neural-700 text-gray-400 hover:text-white border-neural-700'">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+            <span class="text-xs font-medium">Copilot</span>
+          </button>
           <button @click="phantomOpen = !phantomOpen"
             class="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
             :class="phantomOpen ? 'bg-cyber-purple/20 text-cyber-purple' : 'hover:bg-neural-700 text-gray-400 hover:text-white'">
@@ -146,6 +157,24 @@ const sidebarLinks = [
         <RouterView />
       </main>
     </div>
+
+    <!-- Job Copilot Slide Panel -->
+    <Transition name="slide">
+      <div v-if="copilotOpen" class="fixed top-0 right-0 bottom-0 w-[420px] bg-neural-900 border-l border-neural-600 z-50 flex flex-col shadow-2xl">
+        <div class="h-14 px-4 flex items-center justify-between border-b border-neural-600 shrink-0">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-cyber-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+            <span class="text-sm font-semibold text-white">Job Copilot</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] bg-green-500/20 text-green-400">GPT-4o</span>
+          </div>
+          <button @click="copilotOpen = false" class="p-1.5 rounded-lg hover:bg-neural-700 text-gray-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+        </div>
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <JobCopilot />
+        </div>
+      </div>
+    </Transition>
+    <div v-if="copilotOpen" class="fixed inset-0 bg-black/20 z-40" @click="copilotOpen = false" />
 
     <!-- Phantom Chat Slide Panel -->
     <Transition name="slide">

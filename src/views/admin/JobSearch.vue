@@ -108,7 +108,12 @@ const filteredJobs = computed(() => {
     jobs = jobs.filter(j => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q) || (j.description?.toLowerCase().includes(q)))
   }
   if (filterPlatform.value) jobs = jobs.filter(j => j.platform === filterPlatform.value)
-  if (filterStatus.value) jobs = jobs.filter(j => j.status === filterStatus.value)
+  // Default: hide applied/dismissed jobs unless user explicitly selects them
+  if (filterStatus.value) {
+    jobs = jobs.filter(j => j.status === filterStatus.value)
+  } else {
+    jobs = jobs.filter(j => j.status !== 'applied' && j.status !== 'dismissed')
+  }
   if (filterType.value) jobs = jobs.filter(j => j.job_type === filterType.value)
   if (filterLocation.value) jobs = jobs.filter(j => j.location?.toLowerCase().includes(filterLocation.value.toLowerCase()))
   if (filterCountry.value) {
@@ -449,7 +454,7 @@ function filterLayerStyle(layer: string): string {
 // ─── Requirements Library ───
 const REQUIREMENTS_LIBRARY = [
   // Documents
-  { id: 'resume', name: 'Resume (Latest)', category: 'document', file: '/assets/documents/resume.pdf', icon: '📄', description: 'FIX Resume March 2026 Update', selectable: false },
+  { id: 'resume', name: 'Resume (Latest)', category: 'document', file: '/assets/documents/resume.pdf', icon: '📄', description: 'Resume April 2026 Update', selectable: false },
   { id: 'disc', name: 'DISC & Motivators Assessment', category: 'assessment', file: '/assets/documents/requirements/disc_assessment.pdf', icon: '🧠', description: 'DISC personality profile — Aquino Gabriel Alvin', selectable: false },
   { id: 'personality', name: 'TypeFinder Personality Test', category: 'assessment', file: '/assets/documents/requirements/personality_test.jpeg', icon: '🧩', description: 'TypeFinder personality test result', selectable: false },
   { id: 'intro_video', name: 'Introduction Video', category: 'document', file: '', icon: '🎥', description: 'Pre-recorded video introduction — auto-submitted when required', selectable: false },
@@ -755,6 +760,7 @@ function finishTask(t: Task, detail: string, error = false) {
             <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Type</th>
             <th class="text-center px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Match</th>
             <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Apply</th>
+            <th class="text-center px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Appl.</th>
             <th class="text-left px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Posted</th>
             <th class="text-right px-2 py-2.5 text-gray-500 font-medium text-[10px] uppercase">Actions</th>
           </tr>
@@ -777,7 +783,16 @@ function finishTask(t: Task, detail: string, error = false) {
               <span v-else class="text-[9px] text-gray-700">—</span>
             </td>
             <td class="px-2 py-2 text-center"><span class="text-xs font-bold" :class="matchColor(job.match_score)">{{ job.match_score ? job.match_score + '%' : '—' }}</span></td>
-            <td class="px-2 py-2"><span class="px-1.5 py-0.5 rounded text-[9px] font-medium" :class="appBadge(rd(job, 'application_type')).bg + ' ' + appBadge(rd(job, 'application_type')).color">{{ appBadge(rd(job, 'application_type')).label }}</span></td>
+            <td class="px-2 py-2">
+              <div class="flex flex-wrap gap-1">
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-medium" :class="appBadge(rd(job, 'application_type')).bg + ' ' + appBadge(rd(job, 'application_type')).color">{{ appBadge(rd(job, 'application_type')).label }}</span>
+                <span v-if="job.easy_apply" class="px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-500/10 text-green-400">⚡ Easy</span>
+              </div>
+            </td>
+            <td class="px-2 py-2 text-center">
+              <span v-if="job.applicant_count" class="text-[10px] text-gray-500">{{ job.applicant_count > 999 ? '999+' : job.applicant_count }}</span>
+              <span v-else class="text-[10px] text-gray-700">—</span>
+            </td>
             <td class="px-2 py-2 text-[10px] text-gray-500">{{ timeAgo(job.posted_at || job.created_at) }}</td>
             <td class="px-2 py-2 text-right" @click.stop>
               <div class="flex items-center justify-end gap-0.5">

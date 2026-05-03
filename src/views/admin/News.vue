@@ -61,7 +61,171 @@ async function generateFromUrl() {
   }
 }
 
+// ─── Caveman: Token-Efficient Bulk Compressor ───
+const cavemanRunning = ref(false)
+const cavemanProgress = ref('')
+
+async function cavemanCompress() {
+  const apiKey = localStorage.getItem('neuralyx_openai_key') || import.meta.env.VITE_OPENAI_KEY || import.meta.env.VITE_GEMINI_KEY
+  if (!apiKey) { alert('No AI key configured'); return }
+
+  cavemanRunning.value = true
+  const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+  let compressed = 0
+
+  for (const article of admin.news) {
+    if (!article.summary || article.summary.length < 20) continue
+    cavemanProgress.value = `${compressed + 1}/${admin.news.length}`
+
+    try {
+      const res = await fetch(`${mcpUrl}/api/ai/compress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: article.summary, mode: 'caveman' }),
+        signal: AbortSignal.timeout(15000),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const compressed_summary = data.compressed || ''
+        if (compressed_summary && compressed_summary.length < article.summary.length) {
+          await admin.updateRow('news', article.id, { summary: compressed_summary })
+          compressed++
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  await admin.fetchNews()
+  cavemanRunning.value = false
+  cavemanProgress.value = ''
+  alert(`Caveman compressed ${compressed} summaries`)
+}
+
+async function cavemanRegenThumbnails() {
+  cavemanRunning.value = true
+  let count = 0
+  for (const article of admin.news) {
+    if (article.image_url) continue // Skip if already has image
+    cavemanProgress.value = `Thumbnails ${count + 1}/${admin.news.filter(a => !a.image_url).length}`
+    try {
+      const apiKey = localStorage.getItem('neuralyx_openai_key') || import.meta.env.VITE_OPENAI_KEY || ''
+      const thumb = await generateThumbnail(article.title, article.category, article.summary || '', article.link_url || null, apiKey)
+      if (thumb) {
+        await admin.updateRow('news', article.id, { image_url: thumb })
+        count++
+      }
+    } catch { /* skip */ }
+  }
+  await admin.fetchNews()
+  cavemanRunning.value = false
+  cavemanProgress.value = ''
+  alert(`Generated ${count} thumbnails`)
+}
+
+// ─── Anton: AI Content Intelligence Agent ───
+const antonRunning = ref(false)
+const antonStatus = ref('')
+const antonSuggestions = ref<{ title: string; url: string; category: string; reason: string }[]>([])
+
+async function antonDiscoverTopics() {
+  const apiKey = localStorage.getItem('neuralyx_openai_key') || import.meta.env.VITE_OPENAI_KEY || import.meta.env.VITE_GEMINI_KEY
+  if (!apiKey) { alert('No AI key configured'); return }
+
+  antonRunning.value = true
+  antonStatus.value = 'Analyzing trends...'
+  antonSuggestions.value = []
+
+  const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+
+  try {
+    // Get existing article titles to avoid duplicates
+    const existingTitles = admin.news.map(a => a.title.toLowerCase()).join(', ')
+    const existingCategories = [...new Set(admin.news.map(a => a.category))].join(', ')
+
+    antonStatus.value = 'Querying AI for trending topics...'
+    const res = await fetch(`${mcpUrl}/api/jobs/cover-letter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'content_agent',
+        company: 'anton',
+        description: `You are an AI content intelligence agent. Suggest 5 trending tech articles/news topics for a portfolio blog focused on: AI automation, AI agents, LLM, MCP, Claude API, DevOps, full-stack dev, marketing automation, business automation.
+
+EXISTING articles (avoid duplicates): ${existingTitles.slice(0, 500)}
+EXISTING categories: ${existingCategories}
+
+Return ONLY a JSON array: [{"title":"Article Title","url":"https://source-url.com/article","category":"ai|tool|ai-agent|mcp|automation|web|devops","reason":"why this is trending"}]
+
+Focus on: latest releases (past 7 days), breaking news, new open-source tools, new AI models, new MCP servers. Use real URLs from HackerNews, GitHub trending, TechCrunch, The Verge, ArsTechnica.`,
+      }),
+      signal: AbortSignal.timeout(30000),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      const text = data.cover_letter || ''
+      // Parse JSON from AI response
+      const match = text.match(/\[[\s\S]*\]/)
+      if (match) {
+        antonSuggestions.value = JSON.parse(match[0])
+        antonStatus.value = `Found ${antonSuggestions.value.length} topics`
+      } else {
+        antonStatus.value = 'No structured suggestions returned'
+      }
+    }
+  } catch (e) {
+    antonStatus.value = `Error: ${e}`
+  }
+
+  antonRunning.value = false
+}
+
+async function antonAnalyzeGaps() {
+  const apiKey = localStorage.getItem('neuralyx_openai_key') || import.meta.env.VITE_OPENAI_KEY || import.meta.env.VITE_GEMINI_KEY
+  if (!apiKey) { alert('No AI key configured'); return }
+
+  antonRunning.value = true
+  antonStatus.value = 'Analyzing content gaps...'
+  antonSuggestions.value = []
+
+  const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+
+  try {
+    const categoryCounts = admin.news.reduce((acc: Record<string, number>, a) => { acc[a.category] = (acc[a.category] || 0) + 1; return acc }, {})
+
+    const res = await fetch(`${mcpUrl}/api/jobs/cover-letter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'content_gaps',
+        company: 'anton',
+        description: `Analyze content gaps for an AI/automation portfolio blog. Current article counts by category: ${JSON.stringify(categoryCounts)}. Total articles: ${admin.news.length}.
+
+Suggest 5 articles that would fill gaps — underrepresented categories, missing hot topics, missing foundational content.
+
+Return ONLY a JSON array: [{"title":"Article Title","url":"https://relevant-source.com","category":"ai|tool|ai-agent|mcp|automation","reason":"why this fills a gap"}]`,
+      }),
+      signal: AbortSignal.timeout(30000),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      const text = data.cover_letter || ''
+      const match = text.match(/\[[\s\S]*\]/)
+      if (match) {
+        antonSuggestions.value = JSON.parse(match[0])
+        antonStatus.value = `Found ${antonSuggestions.value.length} gap-filling topics`
+      }
+    }
+  } catch (e) {
+    antonStatus.value = `Error: ${e}`
+  }
+
+  antonRunning.value = false
+}
+
 const NEWS_CATEGORIES = [
+  { value: 'default-setup', label: '🔧 Default Setup' },
   { value: 'ai', label: 'AI' },
   { value: 'tool', label: 'Tool' },
   { value: 'mcp', label: 'MCP' },
@@ -88,6 +252,7 @@ const landingArticles = computed(() => {
 const landingIds = computed(() => new Set(landingArticles.value.map(a => a.id)))
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  'default-setup': ['default', 'default-setup', 'setup', 'configuration', 'project-template', 'init'],
   ai: ['ai', 'artificial intelligence', 'machine learning', 'ml'],
   tool: ['tool', 'cli', 'sdk', 'library', 'utility'],
   mcp: ['mcp', 'model context protocol'],
@@ -440,6 +605,36 @@ async function batchFixMissingImages() {
   batchFixing.value = false
 }
 
+// ─── Permanently fix ALL images (regenerate every article's thumbnail) ───
+async function batchFixAllImages() {
+  if (!confirm('Regenerate ALL article thumbnails? This will overwrite existing images.')) return
+
+  const allArticles = [...admin.news]
+  batchFixing.value = true
+  batchProgress.value = { done: 0, total: allArticles.length, current: '' }
+
+  for (const article of allArticles) {
+    batchProgress.value.current = article.title
+    try {
+      const result = await generateThumbnail(
+        article.title,
+        article.category,
+        article.summary,
+        article.link_url || null,
+        getApiKey(),
+      )
+      if (result) {
+        await admin.updateRow('news', article.id, { image_url: result.url })
+      }
+    } catch { /* continue to next */ }
+    batchProgress.value.done++
+  }
+
+  await admin.fetchNews()
+  batchFixing.value = false
+  alert(`Done! Processed ${allArticles.length} articles.`)
+}
+
 function openCreate() {
   editing.value = null
   showHtmlSource.value = false
@@ -577,6 +772,56 @@ async function unpinFromLanding(article: NewsArticle) {
       <p v-if="generateError && !generating" class="mt-2 text-xs text-red-400">{{ generateError }}</p>
     </div>
 
+    <!-- AI Content Tools -->
+    <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+      <!-- Caveman: Token-Efficient Summarizer -->
+      <div class="p-4 bg-neural-800/50 border border-amber-500/20 rounded-xl">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-lg">🦴</span>
+          <span class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Caveman Compress</span>
+        </div>
+        <p class="text-[10px] text-gray-500 mb-3">Bulk compress article summaries — saves ~65% tokens while keeping accuracy. Uses ultra-condensed language.</p>
+        <div class="flex gap-2">
+          <button @click="cavemanCompress" :disabled="cavemanRunning"
+            class="px-4 py-2 rounded-lg text-[11px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-40 flex items-center gap-1.5">
+            <svg v-if="cavemanRunning" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            {{ cavemanRunning ? `Compressing ${cavemanProgress}...` : 'Compress All Summaries' }}
+          </button>
+          <button @click="cavemanRegenThumbnails" :disabled="cavemanRunning"
+            class="px-4 py-2 rounded-lg text-[11px] font-medium text-gray-400 bg-neural-700 hover:bg-neural-600 disabled:opacity-40">
+            Regen Thumbnails
+          </button>
+        </div>
+      </div>
+
+      <!-- Anton: AI Content Intelligence Agent -->
+      <div class="p-4 bg-neural-800/50 border border-green-500/20 rounded-xl">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-lg">🧠</span>
+          <span class="text-xs font-semibold text-green-400 uppercase tracking-wider">Anton Agent</span>
+        </div>
+        <p class="text-[10px] text-gray-500 mb-3">AI content intelligence — auto-discover trending topics, suggest articles, analyze content gaps, draft editorial calendar.</p>
+        <div class="flex gap-2">
+          <button @click="antonDiscoverTopics" :disabled="antonRunning"
+            class="px-4 py-2 rounded-lg text-[11px] font-medium text-green-400 bg-green-500/10 border border-green-500/20 hover:bg-green-500/20 disabled:opacity-40 flex items-center gap-1.5">
+            <svg v-if="antonRunning" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            {{ antonRunning ? antonStatus : 'Discover Trending Topics' }}
+          </button>
+          <button @click="antonAnalyzeGaps" :disabled="antonRunning"
+            class="px-4 py-2 rounded-lg text-[11px] font-medium text-gray-400 bg-neural-700 hover:bg-neural-600 disabled:opacity-40">
+            Content Gaps
+          </button>
+        </div>
+        <div v-if="antonSuggestions.length" class="mt-3 space-y-1.5">
+          <div v-for="(s, i) in antonSuggestions" :key="i" class="flex items-center gap-2 px-3 py-2 bg-neural-700/50 rounded-lg">
+            <span class="text-[10px] text-green-400 shrink-0">{{ i + 1 }}.</span>
+            <p class="text-[10px] text-gray-300 flex-1">{{ s.title }}</p>
+            <button @click="generateUrl = s.url; generateFromUrl()" class="text-[9px] text-cyber-cyan hover:underline shrink-0">Generate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Batch Fix Missing Images -->
     <div v-if="articlesWithoutImages.length > 0 || batchFixing" class="mb-4 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl flex items-center justify-between">
       <div class="flex items-center gap-3 min-w-0">
@@ -597,7 +842,27 @@ async function unpinFromLanding(article: NewsArticle) {
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
-        {{ batchFixing ? 'Working...' : 'Fix All' }}
+        {{ batchFixing ? 'Working...' : 'Fix Missing' }}
+      </button>
+    </div>
+
+    <!-- Generate All Images (always visible) -->
+    <div class="mb-4 p-3 bg-neural-800/50 border border-neural-600 rounded-xl flex items-center justify-between">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-cyber-purple text-lg flex-shrink-0">⚡</span>
+        <div class="min-w-0">
+          <p class="text-xs text-cyber-purple font-medium">Regenerate ALL thumbnails</p>
+          <p class="text-[10px] text-gray-500">Overwrites existing images for all {{ admin.news.length }} articles</p>
+        </div>
+      </div>
+      <button @click="batchFixAllImages" :disabled="batchFixing"
+        class="px-4 py-2 rounded-lg text-xs font-medium text-white transition-all disabled:opacity-40 flex items-center gap-2 whitespace-nowrap flex-shrink-0"
+        style="background: linear-gradient(135deg, var(--color-cyber-purple), var(--color-cyber-blue));">
+        <svg v-if="batchFixing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        {{ batchFixing ? `Generating ${batchProgress.done}/${batchProgress.total}...` : 'Generate All Images' }}
       </button>
     </div>
 

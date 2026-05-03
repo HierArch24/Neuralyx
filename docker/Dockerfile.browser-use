@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# browser-use brings its own Playwright; pin a recent stable
+RUN pip install --no-cache-dir \
+    "fastapi==0.115.0" \
+    "uvicorn[standard]==0.30.6" \
+    "browser-use>=0.7.0" \
+    "langchain-openai>=0.2.0" \
+    "langchain-anthropic>=0.2.0" \
+    "langchain-google-genai>=2.0.0" \
+    "httpx>=0.27.0"
+
+COPY docker/browser-use/server.py /app/server.py
+
+ENV PORT=7882
+ENV CDP_URL=http://host.docker.internal:9224
+ENV BU_PROVIDER=gemini
+ENV GEMINI_MODEL=gemini-2.0-flash
+ENV OPENAI_MODEL=gpt-4o
+ENV ANTHROPIC_MODEL=claude-sonnet-4-6
+
+EXPOSE 7882
+CMD ["python", "/app/server.py"]

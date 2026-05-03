@@ -39,7 +39,13 @@
 
         <!-- Links -->
         <div class="flex gap-4 mt-8">
-          <a v-if="project.live_url" :href="project.live_url" target="_blank"
+          <button v-if="project.live_url && project.live_url.endsWith('.pdf')" @click="showPdfViewer = true"
+             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors cursor-pointer"
+             style="background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid));">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            View Document
+          </button>
+          <a v-else-if="project.live_url" :href="project.live_url" target="_blank"
              class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
              style="background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid));">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
@@ -58,16 +64,47 @@
         <p>Project not found.</p>
       </div>
     </div>
+
+    <!-- PDF Viewer Modal -->
+    <Teleport to="body">
+      <div v-if="showPdfViewer && project?.live_url" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" @click.self="showPdfViewer = false">
+        <div class="w-full max-w-5xl h-[90vh] flex flex-col rounded-xl overflow-hidden border border-white/10" style="background-color: var(--dark-shade-1)">
+          <!-- Header -->
+          <div class="flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0">
+            <div>
+              <h3 class="text-sm font-bold text-white">{{ project.title }}</h3>
+              <p class="text-[10px] text-white/40">PDF Document Viewer</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <a :href="project.live_url" download class="px-3 py-1.5 rounded-lg text-xs bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition-colors">
+                Download
+              </a>
+              <a :href="project.live_url" target="_blank" class="px-3 py-1.5 rounded-lg text-xs bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition-colors">
+                Open in Tab
+              </a>
+              <button @click="showPdfViewer = false" class="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+          <!-- PDF Embed -->
+          <div class="flex-1 bg-gray-900">
+            <iframe :src="project.live_url" class="w-full h-full border-0" />
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useContentStore } from '@/stores/content'
 
 const route = useRoute()
 const content = useContentStore()
+const showPdfViewer = ref(false)
 
 onMounted(async () => {
   if (!content.loaded) await content.fetchAll()

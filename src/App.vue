@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useContentStore } from '@/stores/content'
 import { useSmoothScroll } from '@/composables/useSmoothScroll'
+import ApplyToast from '@/components/shared/ApplyToast.vue'
 
 const content = useContentStore()
 useSmoothScroll()
@@ -13,4 +14,5 @@ onMounted(() => {
 
 <template>
   <RouterView />
+  <ApplyToast />
 </template>

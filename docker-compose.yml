@@ -1,15 +1,10 @@
-services:
+﻿services:
   frontend:
     container_name: neuralyx-frontend
     build:
       context: .
-      dockerfile: docker/Dockerfile.frontend
-      args:
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://phpdxvaowytijhvclljb.supabase.co}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBocGR4dmFvd3l0aWpodmNsbGpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MjE4ODksImV4cCI6MjA4OTQ5Nzg4OX0.ClHZrdLj47HKUiDTfh6oolx3zRtD_dO2kidjfqY92nY}
-        VITE_MCP_SERVER_URL: ${VITE_MCP_SERVER_URL:-http://localhost:8080}
-        VITE_OPENAI_KEY: ${VITE_OPENAI_KEY:-}
-        VITE_GEMINI_KEY: ${VITE_GEMINI_KEY:-}
+      dockerfile: docker/Dockerfile.frontend-dist
+    restart: unless-stopped
     ports:
       - "3000:80"
     depends_on:
@@ -17,7 +12,8 @@ services:
 
   postgres:
     container_name: neuralyx-postgres
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
@@ -33,25 +29,43 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.mcp
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      - SUPABASE_URL=${VITE_SUPABASE_URL}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_URL=${VITE_SUPABASE_URL:-https://phpdxvaowytijhvclljb.supabase.co}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBocGR4dmFvd3l0aWpodmNsbGpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MjE4ODksImV4cCI6MjA4OTQ5Nzg4OX0.ClHZrdLj47HKUiDTfh6oolx3zRtD_dO2kidjfqY92nY}
+      # Local Postgres + filesystem path for recordings (no remote Supabase needed)
+      - LOCAL_PG_URL=postgres://neuralyx:neuralyx_dev@postgres:5432/neuralyx
       - UPLOADS_DIR=/app/uploads
+      - RECORDINGS_DIR=/app/uploads/recordings
       - JSEARCH_API_KEY=${JSEARCH_API_KEY:-}
       - ADZUNA_APP_ID=${ADZUNA_APP_ID:-}
       - ADZUNA_APP_KEY=${ADZUNA_APP_KEY:-}
       - OPENAI_KEY=${VITE_OPENAI_KEY:-}
-      - GEMINI_KEY=${VITE_GEMINI_KEY:-AIzaSyCNcGN8E28I3y9JWUQsrAKdJrVsVWYUObI}
+      - GEMINI_KEY=AIzaSyCNcGN8E28I3y9JWUQsrAKdJrVsVWYUObI
       - SEARXNG_URL=http://neuralyx-searxng:8080
-      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_HOST=${SMTP_HOST:-dev-environment.site}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_SECURE=${SMTP_SECURE:-true}
-      - SMTP_USER=${SMTP_USER:-gabrielalvin.jobs@gmail.com}
-      - SMTP_PASS=${SMTP_PASS:-roakebmrqefilgpl}
+      - SMTP_USER=${SMTP_USER:-portfolio@neuralyx.ai.dev-environment.site}
+      - SMTP_PASS=${SMTP_PASS:-RM@CVj3dwG()JD[k}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Gabriel Alvin Aquino}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-gabrielalvin.jobs@gmail.com}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-portfolio@neuralyx.ai.dev-environment.site}
+      - SMTP_REPLY_TO=${SMTP_REPLY_TO:-gabrielalvin.jobs@gmail.com}
+      - NOTIFY_EMAIL=${NOTIFY_EMAIL:-gabrielalvin.jobs@gmail.com}
+      - JOOBLE_API_KEY=${JOOBLE_API_KEY:-bc05cb39-5fff-4771-9084-88a3ae2af025}
+      - AUTO_PIPELINE=${AUTO_PIPELINE:-true}
+      - VITE_HF_TOKEN=${VITE_HF_TOKEN:-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}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY:-}
+      - VOXCPM_LOCAL_URL=${VOXCPM_LOCAL_URL:-http://neuralyx-voxcpm:7861}
+      - WHISPER_LOCAL_URL=${WHISPER_LOCAL_URL:-http://neuralyx-whisper:7870}
+      - GAZE_SIDECAR_URL=${GAZE_SIDECAR_URL:-http://neuralyx-gaze:7880}
+      - BROWSER_HARNESS_URL=${BROWSER_HARNESS_URL:-http://neuralyx-browser-harness:7880}
+      - BROWSER_USE_URL=${BROWSER_USE_URL:-http://neuralyx-browser-use:7882}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${VITE_OPENAI_KEY:-}
     volumes:
       - uploads_data:/app/uploads
       - ./wiki:/app/wiki
@@ -82,7 +96,225 @@ services:
       - searxng_data:/etc/searxng
     restart: unless-stopped
 
+  # Persistent browser for automation (Browserless â€” free, self-hosted)
+  browserless:
+    container_name: neuralyx-browser
+    image: browserless/chrome:latest
+    ports:
+      - "3333:3000"
+    environment:
+      - TOKEN=neuralyx-browser-2026
+      - CONCURRENT=2
+      - QUEUED=5
+      - TIMEOUT=300000
+      - KEEP_ALIVE=true
+      - PREBOOT_CHROME=true
+      - ENABLE_DEBUGGER=true
+      - DEFAULT_STEALTH=true
+    volumes:
+      - browser_data:/tmp/browserless-data
+    restart: unless-stopped
+
+  # n8n Workflow Automation â€” orchestrates the entire job pipeline
+  n8n:
+    container_name: neuralyx-n8n
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=neuralyx2026
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Asia/Manila
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=neuralyx-postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=neuralyx
+      - DB_POSTGRESDB_USER=neuralyx
+      - DB_POSTGRESDB_PASSWORD=neuralyx_dev
+      - N8N_ENCRYPTION_KEY=neuralyx-n8n-encrypt-key-2026
+      # Pass through API keys for HTTP nodes
+      - GEMINI_KEY=AIzaSyCNcGN8E28I3y9JWUQsrAKdJrVsVWYUObI
+      - MCP_SERVER_URL=http://neuralyx-mcp:8080
+      - SUPABASE_URL=${VITE_SUPABASE_URL:-https://phpdxvaowytijhvclljb.supabase.co}
+      - SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBocGR4dmFvd3l0aWpodmNsbGpiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MjE4ODksImV4cCI6MjA4OTQ5Nzg4OX0.ClHZrdLj47HKUiDTfh6oolx3zRtD_dO2kidjfqY92nY}
+      - SMTP_HOST=dev-environment.site
+      - SMTP_PORT=465
+      - SMTP_USER=portfolio@neuralyx.ai.dev-environment.site
+      - SMTP_PASS=RM@CVj3dwG()JD[k
+    user: root
+    entrypoint: >
+      sh -c "chown -R 1000:1000 /home/node/.n8n && exec su node -c 'n8n'"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - postgres
+      - mcp-server
+    restart: unless-stopped
+
+  # ── Gaze-correction sidecar ──────────────────────────────────────────────
+  # Hosts a swappable gaze-redirection model (chihfanhsu/gaze_correction,
+  # jatolentino/gAIze, ONNX, …). Ships in PASSTHROUGH mode — drop a
+  # checkpoint into ./services/gaze/checkpoints to enable real correction.
+  gaze:
+    container_name: neuralyx-gaze
+    build:
+      context: ./services/gaze
+      dockerfile: Dockerfile
+    ports:
+      - "7881:7880"
+    environment:
+      - CHECKPOINT_DIR=/app/checkpoints
+      - GAZE_MODEL_NAME=chihfanhsu_warpcnn
+      # NVIDIA Maxine cloud (opt-in via ?backend=maxine on /process-video)
+      - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY:-}
+      - NVIDIA_NIM_FUNCTION_ID=${NVIDIA_NIM_FUNCTION_ID:-7d09dd81-81ea-42ce-9909-843bdc07ec8d}
+      - NVIDIA_NIM_TARGET=${NVIDIA_NIM_TARGET:-grpc.nvcf.nvidia.com:443}
+      # NVIDIA Maxine self-hosted (rented Vast.ai or owned NVIDIA GPU box)
+      # Set to a URL exposing POST /correct (multipart 'video') — survives cloud deprecation
+      - MAXINE_LOCAL_URL=${MAXINE_LOCAL_URL:-}
+      - MAXINE_LOCAL_TARGET=${MAXINE_LOCAL_TARGET:-}
+    volumes:
+      - ./services/gaze/checkpoints:/app/checkpoints
+    restart: unless-stopped
+
+  # ── SadTalker local lip-sync engine ──────────────────────────────────────
+  # Current: CPU mode (AMD Radeon 760M — slow but functional)
+  # GPU upgrade: set CPU_ONLY=0 and uncomment the deploy.resources block below
+  sadtalker:
+    container_name: neuralyx-sadtalker
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sadtalker
+    ports:
+      - "7860:7860"
+    environment:
+      - CPU_ONLY=1          # change to 0 after NVIDIA GPU upgrade
+    volumes:
+      - D:/TECK TOOLS/models/sadtalker/checkpoints:/app/checkpoints
+      - D:/TECK TOOLS/models/sadtalker/gfpgan:/app/gfpgan
+    restart: unless-stopped
+    # â”€â”€ Uncomment after NVIDIA GPU upgrade â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # â”€â”€ VoxCPM local voice clone engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # Current: CPU mode (AMD Radeon 760M â€” slow but functional)
+  # GPU upgrade: set CPU_ONLY=0 and uncomment the deploy.resources block below
+  # Model: CosyVoice2-0.5B â€” downloads on first start (~1GB, cached in volume)
+  voxcpm:
+    container_name: neuralyx-voxcpm
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.voxcpm
+    ports:
+      - "7861:7861"
+    environment:
+      - CPU_ONLY=1          # change to 0 after NVIDIA GPU upgrade
+      - PORT=7861
+      - HF_TOKEN=${VITE_HF_TOKEN:-}
+    volumes:
+      - D:/TECK TOOLS/models/voxcpm:/app/tts_models
+    restart: unless-stopped
+    # â”€â”€ Uncomment after NVIDIA GPU upgrade â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ── Local faster-whisper transcription (offline, no API key) ──────────
+  # Default model: large-v3-turbo (int8 CPU) — ~1.5GB download on first run
+  # To switch: set WHISPER_MODEL to one of: tiny.en, base.en, small.en,
+  #   medium.en, large-v3, large-v3-turbo, distil-large-v3
+  whisper:
+    container_name: neuralyx-whisper
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.whisper
+    ports:
+      - "7870:7870"
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3-turbo}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
+      - WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE:-int8}
+      - PORT=7870
+    volumes:
+      - whisper_models:/app/models
+    restart: unless-stopped
+
+  # ── Browser Harness — AI-driven apply fallback ───────────────────────
+  # When scripted apply scripts (apply-linkedin.ts, etc.) hit a selector miss,
+  # MCP delegates to this Claude-driven agent. Connects to user's Edge via CDP.
+  # Requires: Edge running with --remote-debugging-port=9222 on host.
+  browser-harness:
+    container_name: neuralyx-browser-harness
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.browser-harness
+    ports:
+      - "7880:7880"
+    environment:
+      - PORT=7880
+      - CDP_URL=http://host.docker.internal:9224
+      - ANTHROPIC_MODEL=${HARNESS_MODEL:-claude-sonnet-4-6}
+      - OPENAI_MODEL=${HARNESS_OPENAI_MODEL:-gpt-4o}
+      - GEMINI_MODEL=${HARNESS_GEMINI_MODEL:-gemini-2.0-flash}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-${VITE_OPENAI_KEY:-}}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-${GEMINI_KEY:-${VITE_GEMINI_KEY:-}}}
+      # Provider preference order — comma-separated. First listed is tried first;
+      # auto-falls-back to next on billing/auth/rate-limit errors.
+      - HARNESS_PROVIDERS=${HARNESS_PROVIDERS:-anthropic,openai,gemini}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ── Tier-3: real browser-use library (https://github.com/browser-use/browser-use)
+  # Final escalation when our custom browser-harness gives up. Uses browser-use's
+  # built-in DOM accessibility extraction + retry logic. Picks LLM via BU_PROVIDER.
+  browser-use:
+    container_name: neuralyx-browser-use
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.browser-use
+    ports:
+      - "7882:7882"
+    environment:
+      - PORT=7882
+      - CDP_URL=http://host.docker.internal:9224
+      - BU_PROVIDER=${BU_PROVIDER:-gemini}
+      - GEMINI_MODEL=${HARNESS_GEMINI_MODEL:-gemini-2.0-flash}
+      - OPENAI_MODEL=${HARNESS_OPENAI_MODEL:-gpt-4o}
+      - ANTHROPIC_MODEL=${HARNESS_MODEL:-claude-sonnet-4-6}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-${GEMINI_KEY:-${VITE_GEMINI_KEY:-}}}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-${VITE_OPENAI_KEY:-}}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   uploads_data:
   searxng_data:
+  browser_data:
+  n8n_data:
+  sadtalker_models:
+  sadtalker_gfpgan:
+  voxcpm_models:
+  whisper_models:
+
+

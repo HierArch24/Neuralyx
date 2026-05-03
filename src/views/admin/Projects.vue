@@ -94,6 +94,47 @@ async function handleDelete(id: string) {
   }
 }
 
+const pdfUploading = ref(false)
+
+async function handlePdfUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !file.name.endsWith('.pdf')) return
+
+  pdfUploading.value = true
+  try {
+    const mcpUrl = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:8080'
+
+    // Read file as base64
+    const reader = new FileReader()
+    const base64 = await new Promise<string>((resolve) => {
+      reader.onload = () => resolve(reader.result as string)
+      reader.readAsDataURL(file)
+    })
+
+    // Upload to MCP server
+    const res = await fetch(`${mcpUrl}/api/upload-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64, filename: file.name }),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      // MCP returns the URL path
+      form.value.live_url = data.url || `/assets/documents/${file.name}`
+    } else {
+      // Fallback: use the public assets path directly
+      form.value.live_url = `/assets/documents/${file.name}`
+    }
+  } catch {
+    // Fallback path
+    form.value.live_url = `/assets/documents/${file.name}`
+  }
+  pdfUploading.value = false
+  input.value = '' // Reset file input
+}
+
 async function toggleFeatured(project: Project) {
   await admin.updateRow('projects', project.id, { is_featured: !project.is_featured })
   await admin.fetchProjects()
@@ -304,14 +345,34 @@ function processFile(file: File) {
               <input v-model="form.video_url" class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" placeholder="/assets/videos/web/demo.mp4 or https://youtube.com/..." />
             </div>
 
+            <!-- PDF Document Upload -->
+            <div>
+              <label class="block text-xs text-gray-400 uppercase mb-1">PDF Document (viewable on landing page)</label>
+              <div class="flex items-center gap-3">
+                <div class="flex-1">
+                  <input v-model="form.live_url" class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" placeholder="/assets/documents/project-overview.pdf" />
+                </div>
+                <label class="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
+                  :class="pdfUploading ? 'bg-gray-600 text-gray-400' : 'bg-cyber-purple/20 text-cyber-purple hover:bg-cyber-purple/30 border border-cyber-purple/30'">
+                  {{ pdfUploading ? 'Uploading...' : 'Upload PDF' }}
+                  <input type="file" accept=".pdf" class="hidden" @change="handlePdfUpload" :disabled="pdfUploading" />
+                </label>
+              </div>
+              <div v-if="form.live_url && form.live_url.endsWith('.pdf')" class="mt-2 flex items-center gap-2">
+                <span class="text-[10px] text-green-400">PDF linked — will show "View Document" button on project page</span>
+                <a :href="form.live_url" target="_blank" class="text-[10px] text-cyber-cyan hover:underline">Preview</a>
+              </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label class="block text-xs text-gray-400 uppercase mb-1">GitHub URL</label>
                 <input v-model="form.github_url" class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" placeholder="https://github.com/..." />
               </div>
               <div>
-                <label class="block text-xs text-gray-400 uppercase mb-1">Live URL</label>
-                <input v-model="form.live_url" class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" placeholder="https://..." />
+                <label class="block text-xs text-gray-400 uppercase mb-1">Live URL (non-PDF)</label>
+                <input v-if="!form.live_url?.endsWith('.pdf')" v-model="form.live_url" class="w-full px-3 py-2 bg-neural-700 border border-neural-600 rounded-lg text-white text-sm focus:border-cyber-purple focus:outline-none" placeholder="https://..." />
+                <p v-else class="px-3 py-2 text-sm text-green-400/60">Using PDF document as live URL</p>
               </div>
             </div>
 
