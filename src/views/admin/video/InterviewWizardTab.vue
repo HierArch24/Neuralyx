@@ -758,7 +758,78 @@ const categories = [
 ]
 
 // ── Pre-loaded example questions ───────────────────────────────────────────
+// ── Default Scripted Answers — auto-trigger when asked, don't regurgitate resume ──
+const DEFAULT_SCRIPTS = [
+  {
+    id: 'ds-why-this-company',
+    category: 'motivation',
+    question: 'Why do you want to work here specifically, and what excites you most about this opportunity?',
+    triggerKeywords: ['why work here', 'why this company', 'why join', 'what excites', 'why interested', 'why this role', 'mission aligns', 'values align', 'company mission', 'why us', 'why here', 'what drew you'],
+    // STRATEGY: Don't recite resume. Research their mission → find 1 thing that resonates → link to YOUR work → state impact you want to bring.
+    script: `[PREP — before this answer] Go to their website or LinkedIn. Find ONE mission statement, product initiative, or value that genuinely connects to work you've actually done. Replace the brackets below with that specific thing.
+
+"I actually looked into [Company Name] before today, and what stood out to me was your mission around [specific mission / initiative / product value]. That resonates with me — not as a talking point, but because I've been solving a version of that same problem.
+
+At NEURALYX, I designed an AI orchestration system where four specialized agents handle complex workflows end-to-end — classification, retrieval, generation, delivery — fully automated and production-grade. That came from a conviction that AI should own entire workflows, not just assist them.
+
+At Wooder Group, I took that same thinking into production for real clients — multi-tenant SaaS platforms, AI integrations, and DevOps pipelines I owned from code to deployment.
+
+What draws me here specifically is [their product or initiative]. I see a real fit between what you're building and how I think. I don't just want a role — I want to bring that impact to a team working on something worth building."`,
+  },
+  {
+    id: 'ds-tell-me-about-yourself',
+    category: 'general',
+    question: 'Tell me about yourself and why you\'re interested in this role.',
+    triggerKeywords: ['tell me about yourself', 'about yourself', 'introduce yourself', 'walk me through your background', 'your background'],
+    script: `I'm Gabriel Alvin Aquino — an AI Systems Engineer and Automation Developer based in the Philippines. I've spent the last 8+ years building systems that automate complex workflows, and lately I've been focused on AI agent architectures.
+
+My current project is NEURALYX — a personal AI automation platform where I built an MCP server, a job pipeline with 4 AI sub-agents (classification, cover letter generation, recruiter research, post-apply research), and multi-platform apply automation using Playwright and CDP. It's essentially a full-stack AI engineering sandbox.
+
+Before that, at Wooder Group Pty Ltd in Australia, I was doing full-stack development, AI integration, and DevOps architecture — multi-tenant SaaS platforms, CI/CD pipelines, infrastructure as code.
+
+What draws me to this role specifically is [something specific about the company]. My combination of hands-on AI engineering with real production experience means I can hit the ground running and start contributing immediately.`,
+  },
+  {
+    id: 'ds-greatest-strength',
+    category: 'strength',
+    question: 'What is your greatest technical strength and how have you applied it to deliver real business value?',
+    triggerKeywords: ['greatest strength', 'biggest strength', 'key strength', 'what are you best at', 'strongest skill'],
+    script: `My greatest strength is systems thinking — I can look at a complex problem and design an architecture that automates the whole flow, not just patch individual parts.
+
+At NEURALYX, I didn't just build one tool — I designed an entire MCP-driven ecosystem with 4 specialized AI agents, each handling a different part of the job pipeline. The classifier detects role types, the cover letter agent does RAG-based writing using portfolio signals, the recruiter research agent pulls company intel, and the post-apply agent handles follow-ups. All orchestrated through n8n.
+
+That systems approach at Wooder Group meant I could take a platform from zero to production, own its CI/CD pipeline, and integrate AI features that actually improved user outcomes. I don't just write code — I design the architecture that makes teams more productive.`,
+  },
+  {
+    id: 'ds-complex-problem',
+    category: 'behavioral',
+    question: 'Tell me about a time you had to solve a complex technical problem under a tight deadline. What was your approach and what was the outcome?',
+    triggerKeywords: ['complex problem', 'tight deadline', 'under pressure', 'time crunch', 'difficult challenge', 'toughest problem', 'hardest thing'],
+    script: `There was a situation at Wooder Group where we had a multi-tenant platform issue that was causing data leakage between tenants during peak traffic. We had 48 hours before a major client review, and the existing monitoring wasn't catching the edge cases.
+
+My approach was triage first — I set up targeted logging on the tenant isolation layer to reproduce the exact conditions. Found that the connection pooling was reusing connections across tenant boundaries under high concurrency.
+
+The fix was architectural: I implemented tenant-scoped connection pools with proper middleware isolation, added pgvector for query optimization, and set up health checks that caught the pattern before it hit production again.
+
+Delivered 2 days ahead of the deadline, the client review went smoothly, and those health checks became standard monitoring for all our platforms going forward.`,
+  },
+  {
+    id: 'ds-debugging-pipeline',
+    category: 'situational',
+    question: 'If you were given a new data pipeline that was failing in production with no documentation, how would you debug and stabilize it?',
+    triggerKeywords: ['debug pipeline', 'failing production', 'no documentation', 'stabilize', 'broken system', 'unknown codebase'],
+    script: `First, I'd isolate the blast radius — check logs, metrics, and alerts to understand exactly what's failing and whether data loss is happening right now. If there's active data loss, I'd halt the pipeline and switch to read-only mode if possible.
+
+Then I'd map the architecture by tracing data flow — check source connectors, transformation steps, output sinks, and any orchestration layer. I'd use database queries and API calls to understand the schema and dependencies without relying on documentation.
+
+Next, I'd run targeted tests against known-good inputs to find the exact failure point. Once isolated, I'd implement a minimal fix that restores functionality, then add proper observability — structured logging, metrics, and alerting — so the next person won't be blind.
+
+Finally, I'd document what I found and create runbooks. At NEURALYX, when I built the job pipeline, I made sure every agent had health checks and error reporting built in precisely because I've seen what happens when systems are opaque.`,
+  },
+]
+
 const PRELOADED_QUESTIONS = [
+  ...DEFAULT_SCRIPTS.map(ds => ({ id: ds.id, category: ds.category, question: ds.question, answer: '', script: ds.script, hasDefaultScript: true })),
   {
     id: 'pre-1',
     category: 'technical',
@@ -778,12 +849,6 @@ const PRELOADED_QUESTIONS = [
     answer: '',
   },
   {
-    id: 'pre-4',
-    category: 'motivation',
-    question: 'Why do you want to work here specifically, and what excites you most about this opportunity?',
-    answer: '',
-  },
-  {
     id: 'pre-5',
     category: 'situational',
     question: 'If you were given a new data pipeline that was failing in production with no documentation, how would you debug and stabilize it?',
@@ -797,28 +862,90 @@ const PRELOADED_QUESTIONS = [
   },
 ]
 
-const savedQuestions = ref<{ id: string; question: string; category: string; answer: string }[]>(
-  JSON.parse(localStorage.getItem('neuralyx_interview_q') || '[]')
-)
+const savedQuestions = ref<{ id: string; question: string; category: string; answer: string; script?: string; hasDefaultScript?: boolean }[]>((() => {
+  const raw: any[] = JSON.parse(localStorage.getItem('neuralyx_interview_q') || '[]')
+  // Deduplicate existing saved entries by question text on load
+  const seen = new Set<string>()
+  return raw.filter(q => {
+    const key = q.question?.trim().toLowerCase()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+})())
 
-// Merge preloaded at the end (only ones not already saved)
+// Merge preloaded — deduplicate by question text across saved + preloaded
 const allQuestions = computed(() => {
-  const savedIds = new Set(savedQuestions.value.map(q => q.id))
-  const preloads = PRELOADED_QUESTIONS.filter(p => !savedIds.has(p.id))
-  return [...savedQuestions.value, ...preloads]
+  const seen = new Set<string>()
+  const result: typeof savedQuestions.value = []
+  for (const q of savedQuestions.value) {
+    const key = q.question.trim().toLowerCase()
+    if (!seen.has(key)) { seen.add(key); result.push(q) }
+  }
+  for (const p of PRELOADED_QUESTIONS) {
+    const key = p.question.trim().toLowerCase()
+    if (!seen.has(key)) { seen.add(key); result.push(p as any) }
+  }
+  return result
+})
+
+// ─── Default Script Auto-Detect ──────────────────────────────────────────
+let detectTimer: ReturnType<typeof setTimeout> | null = null
+const matchedScript = ref<string | null>(null)
+watch(question, (val) => {
+  if (detectTimer) clearTimeout(detectTimer)
+  if (!val.trim()) { matchedScript.value = null; return }
+  detectTimer = setTimeout(() => {
+    const lower = val.toLowerCase()
+    let found = false
+    for (const ds of DEFAULT_SCRIPTS) {
+      if (ds.triggerKeywords.some(kw => lower.includes(kw))) {
+        matchedScript.value = ds.script
+        found = true
+        break
+      }
+    }
+    if (!found) matchedScript.value = null
+  }, 600)
 })
 
 function saveQuestion(ans: string) {
-  const entry = { id: Date.now().toString(36), question: question.value, category: category.value, answer: ans }
-  savedQuestions.value.unshift(entry)
-  if (savedQuestions.value.length > 20) savedQuestions.value = savedQuestions.value.slice(0, 20)
+  const matchingScript = DEFAULT_SCRIPTS.find(ds => ds.question.toLowerCase() === question.value.toLowerCase())
+  const qKey = question.value.trim().toLowerCase()
+  const existingIdx = savedQuestions.value.findIndex(q => q.question.trim().toLowerCase() === qKey)
+
+  if (existingIdx !== -1) {
+    // Update in place — no duplicate
+    savedQuestions.value[existingIdx] = {
+      ...savedQuestions.value[existingIdx],
+      answer: ans,
+      script: matchingScript?.script || savedQuestions.value[existingIdx].script || '',
+      hasDefaultScript: !!matchingScript || !!savedQuestions.value[existingIdx].hasDefaultScript,
+    }
+  } else {
+    savedQuestions.value.unshift({
+      id: Date.now().toString(36),
+      question: question.value,
+      category: category.value,
+      answer: ans,
+      script: matchingScript?.script || '',
+      hasDefaultScript: !!matchingScript,
+    })
+    if (savedQuestions.value.length > 50) savedQuestions.value = savedQuestions.value.slice(0, 50)
+  }
   localStorage.setItem('neuralyx_interview_q', JSON.stringify(savedQuestions.value))
 }
 
-function loadSaved(item: { id: string; question: string; category: string; answer: string }) {
+function loadSaved(item: { id: string; question: string; category: string; answer: string; script?: string; hasDefaultScript?: boolean }) {
   question.value  = item.question
   category.value  = item.category
-  if (item.answer) {
+  if (item.script) {
+    // Has a default script — use it directly
+    generatedAnswer.value = item.script
+    script.value          = item.script
+    currentStep.value     = 2
+  } else if (item.answer) {
+    // Has a user-generated answer
     generatedAnswer.value = item.answer
     script.value          = item.answer
     currentStep.value     = 2
@@ -1008,6 +1135,8 @@ const estDuration  = computed(() => Math.round(wordCount.value / 2.5)) // ~150wp
 const scriptPopout  = ref(false)
 const popoutX       = ref(80)
 const popoutY       = ref(80)
+const popoutW       = ref(520)
+const popoutH       = ref(480)
 let   _dragging     = false
 let   _ox = 0, _oy = 0
 const _scriptRefs = { channel: null as BroadcastChannel | null, win: null as Window | null }
@@ -1132,42 +1261,135 @@ function stopDrag() {
   window.removeEventListener('mouseup', stopDrag)
 }
 
+// ── Script popout resize ──────────────────────────────────────────────────
+let _resizing = false, _rDir = ''
+let _rX0 = 0, _rY0 = 0, _rW0 = 0, _rH0 = 0, _rPX0 = 0, _rPY0 = 0
+
+function startResize(e: MouseEvent, dir: string) {
+  e.preventDefault()
+  e.stopPropagation()
+  _resizing = true
+  _rDir = dir
+  _rX0 = e.clientX; _rY0 = e.clientY
+  _rW0 = popoutW.value; _rH0 = popoutH.value
+  _rPX0 = popoutX.value; _rPY0 = popoutY.value
+  window.addEventListener('mousemove', onResize)
+  window.addEventListener('mouseup', stopResize)
+}
+
+function onResize(e: MouseEvent) {
+  if (!_resizing) return
+  const dx = e.clientX - _rX0
+  const dy = e.clientY - _rY0
+  const minW = 320, minH = 200
+  if (_rDir.includes('e')) popoutW.value = Math.max(minW, Math.min(_rW0 + dx, window.innerWidth  - _rPX0 - 16))
+  if (_rDir.includes('s')) popoutH.value = Math.max(minH, Math.min(_rH0 + dy, window.innerHeight - _rPY0 - 16))
+  if (_rDir.includes('w')) {
+    const nw = Math.max(minW, _rW0 - dx)
+    popoutX.value = Math.max(0, _rPX0 + (_rW0 - nw))
+    popoutW.value = nw
+  }
+  if (_rDir.includes('n')) {
+    const nh = Math.max(minH, _rH0 - dy)
+    popoutY.value = Math.max(0, _rPY0 + (_rH0 - nh))
+    popoutH.value = nh
+  }
+}
+
+function stopResize() {
+  _resizing = false
+  window.removeEventListener('mousemove', onResize)
+  window.removeEventListener('mouseup', stopResize)
+}
+
 // ── Refine / Correct script ────────────────────────────────────────────────
 const refineNote    = ref('')
 const refining      = ref(false)
 const refineError   = ref('')
 const refineLog     = ref('')
 
+// Detect what the user pasted so the AI knows how to act
+const refineMode = computed<'jd' | 'company' | 'question' | 'correction'>(() => {
+  const t = refineNote.value.trim()
+  if (!t) return 'correction'
+  if (/responsibilities|requirements|qualifications|we are looking for|years of experience|job description|about the role|what you.ll do|what we.re looking for|key skills|preferred skills|nice to have|must have|tech stack|compensation|salary|benefits/i.test(t)) return 'jd'
+  if (/our mission|about us|we are a|founded in|our team|our company|we believe|we help|our vision|company overview|who we are|what we do|our product|our platform/i.test(t)) return 'company'
+  if (t.length < 350 && (/\?$/.test(t.trim()) || /^(what|why|how|tell|describe|walk|can you|could you|explain|share|talk)/i.test(t.trim()))) return 'question'
+  if (t.length > 500) return 'jd'
+  return 'correction'
+})
+
+const refineModeLabel = computed(() => ({
+  jd:         { icon: '📋', label: 'JD Mode',      hint: 'fills placeholders & aligns to the role' },
+  company:    { icon: '🏢', label: 'Company Mode',  hint: 'fills placeholders from their mission' },
+  question:   { icon: '❓', label: 'Question Mode', hint: 'adapts script to new question angle' },
+  correction: { icon: '✏️', label: 'Edit Mode',    hint: 'applies your instructions only' },
+}[refineMode.value]))
+
 async function refineScript() {
   if (!script.value.trim() || !refineNote.value.trim()) return
   refining.value  = true
   refineError.value = ''
-  refineLog.value = '🔧 Agent applying corrections…'
+
+  const modeLabels: Record<string, string> = {
+    jd:         '📋 Tailoring to job description…',
+    company:    '🏢 Infusing company context…',
+    question:   '❓ Adapting to new question angle…',
+    correction: '🔧 Applying corrections…',
+  }
+  refineLog.value = modeLabels[refineMode.value]
 
   try {
     const agentPrompt = buildVideoScriptAgentPrompt()
 
-    const refinePrompt = `You are refining an existing video interview script based on the user's correction instructions.
+    const refinePrompt = `You are an AI interview script specialist refining an existing video interview script for Gabriel Alvin Aquino.
 
-Original script:
+GABRIEL'S CONTEXT (use these proof points when relevant):
+- AI Systems Engineer & Automation Developer, Philippines-based
+- NEURALYX: Personal AI platform — MCP server, 4-agent job pipeline (classification, cover letter, recruiter research, post-apply), n8n orchestration, Playwright automation
+- Wooder Group Pty Ltd (2022–2024): Full-stack / AI / DevOps — multi-tenant SaaS platforms, CI/CD pipelines, AI integrations, infrastructure ownership
+- Other projects: Billsense (smart billing), Excis Billing System, GcorpClean, Revaya, Access Insurance
+
+ORIGINAL SCRIPT (may contain [bracket placeholders] that need filling):
 """
 ${script.value}
 """
 
-User's correction instructions:
+USER INPUT (type detected: ${refineMode.value.toUpperCase()}):
 """
 ${refineNote.value}
 """
 
-Instructions:
-- Apply ONLY the corrections the user asked for
-- Keep everything else the same unless it needs to change as a result
-- Maintain the same spoken/video format (no bullet points, natural flow, same approximate length)
-- Output ONLY the revised script — no preamble, no explanation
+INSTRUCTIONS BASED ON TYPE:
+${refineMode.value === 'jd' ? `JOB DESCRIPTION MODE:
+- Extract: company name, role title, company mission/values, key tech requirements, what they care about
+- Fill ALL [bracket placeholders] in the script with specific details from this JD
+- Align Gabriel's proof points to match what the JD emphasizes (e.g. if they want Python expertise, lead with that)
+- Make the script feel tailor-made for this exact role, not generic
+- Remove any placeholder text like [Company Name] — replace with the real thing` : ''}
+${refineMode.value === 'company' ? `COMPANY DESCRIPTION MODE:
+- Extract: company name, mission, product/service, values, what they're building
+- Fill ALL [bracket placeholders] with specific details from this description
+- Make the connection between Gabriel's work and their mission feel specific and genuine
+- Reference their actual product or initiative, not a generic placeholder` : ''}
+${refineMode.value === 'question' ? `ALTERNATIVE QUESTION MODE:
+- The interviewer is asking this from a different angle than the original question
+- Adapt the script so it directly answers this new question's framing and intent
+- Keep Gabriel's core proof points but restructure the narrative to match what's actually being asked
+- If the new question is more specific, make the answer more specific` : ''}
+${refineMode.value === 'correction' ? `CORRECTION MODE:
+- Apply ONLY what the user asked to change
+- Keep everything else the same unless it needs to change as a result` : ''}
 
-Write the corrected script now:`
+ALWAYS:
+- Fill any remaining [bracket placeholders] if context is available
+- Output ONLY the refined script — no labels, no preamble, no explanation
+- Keep spoken/video format: no bullet points, natural first-person flow, 150–220 words
+- Do NOT start with "I" — vary the opening
 
-    const revised = await callAI(agentPrompt, refinePrompt, 600)
+Write the refined script now:`
+
+    const revised = await callAI(agentPrompt, refinePrompt, 700)
     script.value   = revised
     refineLog.value = '✓ Script refined'
     refineNote.value = ''
@@ -2568,6 +2790,29 @@ ${svc.disabled ? `
                 <span class="w-1 h-1 rounded-full bg-green-400"></span> Saved to Question Bank
               </span>
             </div>
+
+            <!-- Default Script Trigger Indicator -->
+            <Transition name="script-trigger">
+              <div v-if="matchedScript"
+                class="mt-3 p-3 rounded-xl border border-cyan-500/30 bg-cyan-500/[0.06]"
+                style="animation: slideDown 0.2s ease-out;">
+                <div class="flex items-start gap-2">
+                  <svg class="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[10px] text-cyan-400 font-semibold uppercase tracking-wider mb-1">⚡ Default Script Matched</p>
+                    <p class="text-xs text-gray-300 line-clamp-3 leading-relaxed">{{ matchedScript }}</p>
+                    <button @click="() => { generatedAnswer = matchedScript!; script = matchedScript!; currentStep = 2 }"
+                      class="mt-2 px-3 py-1.5 rounded-lg text-[11px] font-medium text-white flex items-center gap-1.5 transition-all"
+                      style="background: linear-gradient(135deg, rgba(6,182,212,0.6), rgba(6,182,212,0.3)); border: 1px solid rgba(6,182,212,0.4);">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                      Load Script → Step 2 (Skip AI Generation)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Transition>
           </div>
 
           <!-- Audio Recorder + Transcription -->
@@ -3071,31 +3316,51 @@ ${svc.disabled ? `
               <div class="flex items-center gap-2 px-4 py-2.5 bg-neural-700/40 border-b border-neural-600">
                 <span class="text-sm">✏️</span>
                 <span class="text-[11px] font-semibold text-white">Refine with AI</span>
-                <span class="text-[9px] px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/25">correction agent</span>
+                <span class="text-[9px] px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/25">smart agent</span>
+                <!-- Mode detector badge -->
+                <span v-if="refineNote.trim()" class="ml-auto flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border transition-all"
+                  :class="{
+                    'border-blue-500/40 bg-blue-500/10 text-blue-300':   refineMode === 'jd',
+                    'border-purple-500/40 bg-purple-500/10 text-purple-300': refineMode === 'company',
+                    'border-cyan-500/40 bg-cyan-500/10 text-cyan-300':   refineMode === 'question',
+                    'border-yellow-500/40 bg-yellow-500/10 text-yellow-300': refineMode === 'correction',
+                  }">
+                  {{ refineModeLabel.icon }} {{ refineModeLabel.label }}
+                </span>
               </div>
               <div class="p-4 space-y-3">
                 <p class="text-[10px] text-gray-500 leading-relaxed">
-                  Tell the agent what to fix, remove, or change — it will rewrite only those parts.
+                  Paste a <span class="text-blue-400">job description</span>, <span class="text-purple-400">company overview</span>, or <span class="text-cyan-400">recruiter question</span> — the agent detects what it is and refines accordingly. Or just type a correction.
                 </p>
 
-                <!-- Example chips -->
+                <!-- Mode-aware hint -->
+                <p v-if="refineNote.trim()" class="text-[9px] text-gray-600 italic">
+                  {{ refineModeLabel.hint }}
+                </p>
+
+                <!-- Quick chips — context + correction -->
                 <div class="flex flex-wrap gap-1.5">
-                  <button v-for="hint in [
-                    'Remove the part about Claude Code',
-                    'Make it shorter, max 120 words',
-                    'Sound more confident, less humble',
-                    'Remove all metrics/numbers',
-                    'Rewrite the opening line',
-                    'Make the closing stronger',
-                  ]" :key="hint"
-                    @click="refineNote = hint"
-                    class="px-2.5 py-1 rounded-full text-[10px] border border-neural-500 text-gray-400 hover:border-cyber-purple/50 hover:text-cyber-purple hover:bg-cyber-purple/5 transition-all">
-                    {{ hint }}
+                  <button v-for="chip in [
+                    { label: '📋 Paste JD here',              value: '' },
+                    { label: '🏢 Use their About Us',          value: '' },
+                    { label: '❓ Rephrase for new question',   value: '' },
+                    { label: 'Make it shorter, max 120 words', value: 'Make it shorter, max 120 words' },
+                    { label: 'Sound more confident',           value: 'Sound more confident, less humble' },
+                    { label: 'Rewrite the opening line',       value: 'Rewrite the opening line' },
+                    { label: 'Make the closing stronger',      value: 'Make the closing stronger' },
+                    { label: 'Remove all metrics/numbers',     value: 'Remove all metrics/numbers' },
+                  ]" :key="chip.label"
+                    @click="chip.value ? refineNote = chip.value : undefined"
+                    class="px-2.5 py-1 rounded-full text-[10px] border transition-all"
+                    :class="chip.value
+                      ? 'border-neural-500 text-gray-400 hover:border-cyber-purple/50 hover:text-cyber-purple hover:bg-cyber-purple/5 cursor-pointer'
+                      : 'border-dashed border-neural-600 text-gray-600 cursor-default'">
+                    {{ chip.label }}
                   </button>
                 </div>
 
-                <textarea v-model="refineNote" rows="2"
-                  placeholder="e.g. Remove the part about n8n — I don't use that here. Also make the opening line stronger."
+                <textarea v-model="refineNote" rows="3"
+                  placeholder="Paste a job description, company description, or recruiter question — or just type what to fix. The AI detects the mode automatically."
                   class="w-full px-3 py-2.5 bg-neural-900 border border-neural-600 rounded-lg text-white text-xs focus:border-cyber-purple focus:outline-none resize-none placeholder-gray-600 leading-relaxed" />
 
                 <div class="flex items-center gap-3">
@@ -3107,7 +3372,7 @@ ${svc.disabled ? `
                       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                     </svg>
-                    {{ refining ? 'Refining…' : '✏️ Apply Correction' }}
+                    {{ refining ? 'Refining…' : `${refineModeLabel.icon} Apply & Refine` }}
                   </button>
                   <span v-if="refineLog" class="text-[11px]"
                     :class="refineLog.startsWith('✓') ? 'text-green-400' : 'text-cyber-cyan'">
@@ -3991,7 +4256,7 @@ ${svc.disabled ? `
                 {{ allQuestions.length }} total
               </span>
             </h3>
-            <p class="text-[10px] text-gray-500 mt-0.5">Click any question to load it into Step 1</p>
+            <p class="text-[10px] text-gray-500 mt-0.5">Click any question to load it into Step 1 · Default scripts auto-load on match</p>
           </div>
           <button @click="questionBankOpen = false"
             class="w-8 h-8 rounded-lg bg-neural-700 hover:bg-neural-600 text-gray-400 hover:text-white flex items-center justify-center transition-colors">
@@ -4036,9 +4301,11 @@ ${svc.disabled ? `
 
           <div v-for="item in filteredBank" :key="item.id"
             class="group relative rounded-xl border transition-all cursor-pointer"
-            :class="item.id.startsWith('pre-')
-              ? 'border-neural-600/60 bg-neural-700/20 hover:border-cyber-purple/50 hover:bg-cyber-purple/5'
-              : 'border-neural-600 bg-neural-700/40 hover:border-cyber-purple/50 hover:bg-cyber-purple/5'"
+            :class="(item as any).hasDefaultScript || (item as any).script
+              ? 'border-cyan-500/30 bg-cyan-500/[0.04] hover:border-cyan-400/60 hover:bg-cyan-500/10'
+              : item.id.startsWith('pre-')
+                ? 'border-neural-600/60 bg-neural-700/20 hover:border-cyber-purple/50 hover:bg-cyber-purple/5'
+                : 'border-neural-600 bg-neural-700/40 hover:border-cyber-purple/50 hover:bg-cyber-purple/5'"
             @click="loadFromBank(item)">
 
             <div class="p-3.5">
@@ -4047,7 +4314,12 @@ ${svc.disabled ? `
                   :class="CATEGORY_COLORS[item.category] || CATEGORY_COLORS.general">
                   {{ item.category }}
                 </span>
-                <span v-if="item.id.startsWith('pre-')"
+                <span v-if="(item as any).hasDefaultScript || (item as any).script"
+                  class="text-[9px] px-1.5 py-0.5 rounded border border-cyan-500/40 text-cyan-400 flex-shrink-0 flex items-center gap-1">
+                  <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                  Default Script
+                </span>
+                <span v-else-if="item.id.startsWith('pre-')"
                   class="text-[9px] px-1.5 py-0.5 rounded border border-neural-500 text-gray-500 flex-shrink-0">
                   example
                 </span>
@@ -4064,14 +4336,20 @@ ${svc.disabled ? `
 
               <p class="text-xs text-white leading-relaxed line-clamp-3">{{ item.question }}</p>
 
-              <div v-if="item.answer" class="mt-2 pt-2 border-t border-white/5">
+              <div v-if="(item as any).script" class="mt-2 pt-2 border-t border-cyan-500/10">
+                <p class="text-[10px] text-cyan-400 font-semibold mb-1">📜 Default Script:</p>
+                <p class="text-[10px] text-gray-400 line-clamp-3 leading-relaxed">{{ (item as any).script }}</p>
+              </div>
+              <div v-else-if="item.answer" class="mt-2 pt-2 border-t border-white/5">
                 <p class="text-[10px] text-gray-500 line-clamp-2">{{ item.answer }}</p>
               </div>
             </div>
 
             <!-- Load indicator on hover -->
             <div class="absolute inset-x-0 bottom-0 h-0.5 rounded-b-xl opacity-0 group-hover:opacity-100 transition-opacity"
-              style="background: linear-gradient(90deg, var(--color-cyber-purple), var(--color-cyber-blue))"></div>
+              :style="(item as any).hasDefaultScript || (item as any).script
+                ? 'background: linear-gradient(90deg, var(--color-cyber-cyan), #06b6d4)'
+                : 'background: linear-gradient(90deg, var(--color-cyber-purple), var(--color-cyber-blue))'"></div>
           </div>
         </div>
 
@@ -4093,8 +4371,8 @@ ${svc.disabled ? `
   <!-- ── Floating Script Window ──────────────────────────────────────────── -->
   <Teleport to="body">
     <div v-if="scriptPopout" class="fixed z-[9999] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
-      :style="{ left: popoutX + 'px', top: popoutY + 'px', width: '520px', maxHeight: '80vh' }"
-      style="background: #0f1117; border: 1px solid rgba(139,92,246,0.35);">
+      :style="{ left: popoutX + 'px', top: popoutY + 'px', width: popoutW + 'px', height: popoutH + 'px' }"
+      style="background: #0f1117; border: 1px solid rgba(139,92,246,0.35); min-width: 320px; min-height: 200px;">
 
       <!-- Title bar — drag handle -->
       <div class="flex items-center justify-between px-4 py-2.5 border-b border-neural-600 cursor-move select-none flex-shrink-0"
@@ -4142,6 +4420,31 @@ ${svc.disabled ? `
             <p v-if="refineError" class="text-[10px] text-red-400">{{ refineError }}</p>
           </div>
         </div>
+      </div>
+
+      <!-- ── Resize handles ── -->
+      <!-- Right edge -->
+      <div class="absolute top-0 right-0 w-1.5 h-full cursor-e-resize hover:bg-cyber-purple/20 transition-colors"
+        @mousedown.stop="startResize($event, 'e')" />
+      <!-- Bottom edge -->
+      <div class="absolute bottom-0 left-0 w-full h-1.5 cursor-s-resize hover:bg-cyber-purple/20 transition-colors"
+        @mousedown.stop="startResize($event, 's')" />
+      <!-- Left edge -->
+      <div class="absolute top-0 left-0 w-1.5 h-full cursor-w-resize hover:bg-cyber-purple/20 transition-colors"
+        @mousedown.stop="startResize($event, 'w')" />
+      <!-- SE corner -->
+      <div class="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize z-10 group/rc flex items-end justify-end p-1"
+        @mousedown.stop="startResize($event, 'se')">
+        <svg class="w-3 h-3 opacity-25 group-hover/rc:opacity-80 transition-opacity" viewBox="0 0 10 10" fill="currentColor" style="color:#8b5cf6">
+          <circle cx="8.5" cy="8.5" r="1.2"/><circle cx="4.5" cy="8.5" r="1.2"/><circle cx="8.5" cy="4.5" r="1.2"/>
+        </svg>
+      </div>
+      <!-- SW corner -->
+      <div class="absolute bottom-0 left-0 w-5 h-5 cursor-sw-resize z-10 group/lc flex items-end justify-start p-1"
+        @mousedown.stop="startResize($event, 'sw')">
+        <svg class="w-3 h-3 opacity-25 group-hover/lc:opacity-80 transition-opacity" viewBox="0 0 10 10" fill="currentColor" style="color:#8b5cf6">
+          <circle cx="1.5" cy="8.5" r="1.2"/><circle cx="5.5" cy="8.5" r="1.2"/><circle cx="1.5" cy="4.5" r="1.2"/>
+        </svg>
       </div>
     </div>
   </Teleport>

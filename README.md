@@ -1,130 +1,192 @@
-# NEURALYX - AI Systems Engineering Portfolio
+# NEURALYX — AI Systems Engineering Portfolio
 
-A cinematic, full-stack portfolio platform built for AI Systems Engineer **Gabriel Alvin Aquino**. Features scroll-synced animations, parallax effects, an admin dashboard with CRUD management, AI-powered client validation, and a secure credentials vault.
+A cinematic, full-stack portfolio platform built for AI Systems Engineer **Gabriel Alvin Aquino**. Features scroll-synced animations, parallax video backgrounds, an admin dashboard with CRUD management, AI-powered interview coaching, a self-hosted job application pipeline, and a secure credentials vault.
 
 **Live Site:** [neuralyx.ai.dev-environment.site](https://neuralyx.ai.dev-environment.site)
 
-## Tech Stack
+---
 
-| Layer | Technologies |
-|-------|-------------|
-| Frontend | Vue 3, TypeScript, Vite 8, Tailwind CSS v4 |
-| Animation | GSAP, ScrollTrigger, Lenis Smooth Scroll |
-| State | Pinia, Vue Router 4 |
-| Backend | Supabase (PostgreSQL, Auth, REST API) |
-| AI | OpenAI GPT-5.2 (Validate Need, News Gen, DALL-E thumbnails) |
-| DevOps | Docker, nginx, GitHub Actions CI/CD |
-| Hosting | cPanel (production), Docker (local dev) |
-| Security | TOTP 2FA (Google Authenticator), PIN-protected vault |
+## Stack
 
-## Features
+| Layer | Technology |
+|---|---|
+| Frontend | Vue 3 + TypeScript + Vite 8 |
+| Styling | Tailwind CSS v4 (`@tailwindcss/vite`) |
+| Animation | GSAP + ScrollTrigger, Lenis Smooth Scroll |
+| State | Pinia + Vue Router 4 |
+| Database | PostgreSQL 17 (pgvector) |
+| Backend / API | Node 20 Alpine (Express, MCP server) |
+| Auth | TOTP 2FA (Google Authenticator) + PIN vault |
+| Workflow Automation | n8n |
+| Job Browser Automation | Playwright (Edge Profile 7) |
+| AI Video | SadTalker (lip-sync), VoxCPM (voice clone), Gaze Correction sidecar |
+| Speech | Whisper (local STT) |
+| Search | SearXNG (self-hosted) |
+| Browser Pool | Browserless Chrome |
+| Reverse Proxy | Nginx |
+| Containerisation | Docker Compose |
 
-### Latest Updates (May 2026)
-- **[Video Creation & Agent Updates](docs/VIDEO_CREATION_UPDATES.md)**: Read the full changelog on the new AI Interview Video Creation pipeline, unified model picker, WebM→MP4 transcoding, Maxine gRPC integration, and the floating draggable Gabriel AI Chat.
-- **[Complete Tools & Skills Catalog](docs/COMPLETE-CATALOG.md)**: Details on the 14 configured MCP servers and 182+ ECC skills integrated into the project.
+---
+
+## Project Structure
+
+```
+Navlink/
+├── src/
+│   ├── components/
+│   │   ├── landing/          # 10 cinematic landing page sections
+│   │   └── shared/           # NavBar, ScrollVideoBackground, ParallaxLayer
+│   ├── views/
+│   │   └── admin/            # Dashboard, Jobs, Video Creation, Credentials, Logs
+│   ├── stores/               # Pinia: content, auth, admin
+│   ├── composables/          # useScrollVideo, useParallax, useSupabase
+│   └── router/
+├── mcp-server/               # MCP tools server (Supabase / local DB bridge)
+├── scripts/                  # apply-indeed.ts — Playwright job auto-apply
+├── docker/
+│   ├── postgres/             # init.sql schema
+│   └── nginx/                # nginx.conf
+├── services/
+│   ├── gaze/                 # Gaze-correction model (passthrough / ONNX)
+│   ├── sadtalker/            # Lip-sync engine (CPU mode, GPU-ready)
+│   ├── voxcpm/               # Voice clone engine
+│   └── whisper/              # Local speech-to-text
+├── docker-compose.yml        # Production services
+├── docker-compose.dev.yml    # Dev overrides
+└── dist/                     # Vite production build output
+```
+
+---
+
+## Services (Docker Compose)
+
+| Container | Port | Purpose |
+|---|---|---|
+| `neuralyx-frontend` | 80 / 443 | Vue SPA served via Nginx |
+| `neuralyx-postgres` | 5432 | PostgreSQL 17 + pgvector |
+| `neuralyx-mcp` | 3001 | MCP server — DB bridge + tools |
+| `neuralyx-ai` | 8000 | AI orchestration service |
+| `neuralyx-n8n` | 5678 | n8n workflow automation |
+| `neuralyx-browser` | 3000 | Browserless Chrome pool |
+| `neuralyx-gaze` | 8001 | Gaze correction sidecar |
+| `neuralyx-sadtalker` | 8002 | SadTalker lip-sync |
+| `neuralyx-voxcpm` | 8003 | VoxCPM voice clone |
+| `neuralyx-whisper` | 8004 | Whisper STT |
+| `neuralyx-searxng` | 8080 | SearXNG self-hosted search |
+
+---
+
+## Key Features
 
 ### Landing Page
-- Cinematic hero with scroll-synced video background
-- Parallax rings section with mouse-reactive layers
-- Mobile app portfolio carousel with video demos (14 apps)
-- Web development projects showcase (admin-managed)
-- Skills table with technology logos
-- Tech News section with smart search and pagination (9/page)
-- Interactive certificates gallery (20 certificates)
-- AI automation projects showcase
-- "Validate What You Need" floating button with AI analysis
+- Cinematic scroll-video background with GSAP parallax
+- 10 animated sections: Hero, About, Services, Projects, Skills, Tools, Certificates, Contact
+- Color flow: Dark cyber (purple/cyan) → Transition → Angelic (gold/white)
+- Mobile app portfolio carousel with video demos
+- "Validate What You Need" floating AI client analysis
 
 ### Admin Dashboard
-- **Projects** - CRUD with search, category filters, drag-and-drop image upload, video URLs
-- **Skills** - Bulk edit (set all years/proficiency), search, category filters, pagination
-- **News & Articles** - Table management with inline image swap, AI thumbnail generation, smart category search, pagination, URL-to-article AI generator
-- **Resume** - Structured editor synced with certificates tab
-- **Certificates** - Grid gallery with featured toggle for resume
-- **Sections** - Landing page section management
-- **Messages** - Contact form submissions
-- **Connections** - Read-only system connection health monitor
-- **Git Nexus** - Self-hosted code intelligence engine (iframe on localhost, external link on live)
-- **Credentials Vault** - Secure credential management with PIN + Google Authenticator 2FA
-- **Introduction Video** - Drag-and-drop video upload for landing page
 
-### Credentials Vault
-- PIN + TOTP (Google Authenticator) required on every visit
-- Company-based accordion with expandable service tables
-- Per-credential: type, status (Active/In Use/Expired/Quota Exceeded/Revoked), utilized_by tracking, last_used_at
-- Floating detail window with masked values, reveal/copy/edit/delete
-- Filters by status, search across companies/services/labels
+#### Video Creation (AI Interview Coach)
+- Question bank with default scripts (PREP / STAR frameworks)
+- Auto-match: typed or pasted question triggers the relevant default script
+- **Refine with AI** — detects paste type (Job Description / Company Description / Recruiter Question / Simple Correction) and refines intelligently
+- Floating script editor — draggable + 5-direction resize handles
+- SadTalker lip-sync preview generation
+- VoxCPM voice clone integration
 
-### AI-Powered Features
-- **News from URL** - Paste a URL, GPT-5.2 generates title, summary, content, category
-- **AI Thumbnail Generator** - Screenshot (microlink.io) or DALL-E 3 generation for missing article images
-- **Batch Fix** - One-click thumbnail generation for all articles missing images
-- **Validate What You Need** - GPT-powered client needs assessment with file upload analysis
-- **GitNexus Auto Clone** - AI agent fills GitHub URL and PAT in self-hosted GitNexus iframe
+#### Job Pipeline
+- Kanban board: Saved → Applied → Interview → Offer
+- Playwright auto-apply for Indeed (Edge Profile 7)
+- n8n orchestration webhook
+- Real-time pipeline health monitor
 
-### Shareable Content
-- `/video/:slug` - Shareable video player pages for project demos
-- `/certificates` - Public certificates gallery
-- `/automation` - Automation projects showcase
-- `/news` - Tech news articles with smart search and category filters
+#### Other Admin Pages
+- **Projects** — CRUD with image upload and video URLs
+- **Skills** — Bulk edit with proficiency and years
+- **News & Articles** — AI thumbnail generation, URL-to-article generator
+- **Credentials Vault** — PIN + TOTP 2FA, masked reveal, per-credential status tracking
+- **Session Logs** — Browser automation logs with filtering
+- **Connections** — Read-only service health monitor
 
-## Architecture
+---
 
-```
-src/
-  components/
-    landing/     # 10 section components (Hero, About, Skills, etc.)
-    shared/      # NavBar, ResumeModal, VideoModal, ValidateNeedModal
-  views/
-    admin/       # 12 admin pages (Dashboard, Projects, Skills, News, Credentials, etc.)
-  stores/        # Pinia stores (content, auth, admin)
-  composables/   # Reusable hooks (useScrollVideo, useSmoothScroll, etc.)
-  utils/         # generateNewsFromUrl, generateThumbnail
-  layouts/       # AdminLayout with collapsible sidebar
-docker/
-  Dockerfile.frontend  # Multi-stage: build app + GitNexus, serve via nginx
-  Dockerfile.mcp       # MCP API server (URL fetch, screenshots, image proxy/upload)
-  nginx.conf           # SPA routing + GitNexus sub-app
-mcp-server/            # Node.js API server (fetch-url, screenshot, proxy-image, upload)
-```
+## Local Development
 
-## Development
+### Prerequisites
+- Docker Desktop
+- Node 20+
+
+### Setup
 
 ```bash
-# Install dependencies
+# Clone
+git clone git@github.com-hierarch24:HierArch24/NEURALYX.git
+cd NEURALYX
+
+# Install deps
 npm install
 
-# Start dev server
+# Copy env (fill in your keys)
+cp .env.example .env
+
+# Start all services
+docker-compose up -d
+
+# Frontend dev server (hot reload)
 npm run dev
-
-# Build for production
-npm run build
-
-# Docker (full stack)
-docker compose up -d --build
-
-# Docker (frontend only)
-docker compose up -d --build frontend
 ```
+
+- Dev server: `http://localhost:5173`
+- Admin login: `admin@neuralyx.dev` / `neuralyx2026`
+
+### Build
+
+```bash
+npm run build
+```
+
+Output in `dist/`. Served by the Nginx container in production.
+
+---
 
 ## Deployment
 
-Push to `main` branch triggers GitHub Actions CI/CD:
-1. Builds Vue app with Supabase + OpenAI env vars
-2. Builds GitNexus from source
-3. Deploys via rsync to cPanel
+Two git remotes configured:
+
+| Remote | Target |
+|---|---|
+| `origin` | GitHub — `HierArch24/NEURALYX` |
+| `cpanel` | cPanel live site — `neuralyx.ai.dev-environment.site` |
+
+```bash
+# Push source to GitHub
+git push origin main
+
+# Deploy to live site
+git push cpanel main
+```
+
+---
+
+## Database Schema
+
+Tables (defined in `docker/postgres/init.sql`):
+`sections` · `projects` · `skills` · `tools` · `contact_messages` · `site_settings` · `credentials` · `news`
+
+---
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `VITE_SUPABASE_URL` | Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `VITE_OPENAI_KEY` | OpenAI API key (GPT-5.2, DALL-E 3) |
-| `VITE_MCP_SERVER_URL` | MCP API server URL (default: http://localhost:8080) |
-
-## Database (Supabase)
-
-Tables: `projects`, `skills`, `tools`, `news`, `sections`, `contact_messages`, `site_settings`, `credentials`
+| Variable | Purpose |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase project URL (or local Postgres via MCP) |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key |
+| `VITE_OPENAI_KEY` | OpenAI API (Refine with AI, news gen, client validate) |
+| `VITE_MCP_SERVER_URL` | MCP tools server (default: `http://localhost:3001`) |
+| `HEYGEN_API_KEY` | HeyGen video generation |
+| `N8N_WEBHOOK_URL` | n8n job pipeline webhook |
+| `JWT_SECRET` | Admin auth token signing |
 
 ---
 
