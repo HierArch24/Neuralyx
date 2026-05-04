@@ -125,7 +125,7 @@ const FALLBACK_PROJECTS: Project[] = [
     description: 'Full-featured learning management system admin dashboard built in React. Manages courses, student enrollment, progress tracking, assessments, and institutional reporting.',
     image_url: null, tech_stack: ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Tailwind CSS'],
     category: 'web', github_url: null, live_url: null,
-    video_url: '/videos/Ishaan LMS Web Admin Dashboard built in React.mp4', is_featured: true, sort_order: 7, created_at: now, updated_at: now,
+    video_url: '/videos/Ishaan LMS Web Admin Dashboard  built in React.mp4', is_featured: true, sort_order: 7, created_at: now, updated_at: now,
   },
   {
     id: uid(), title: 'Speech Improvement Center — SIC Database', slug: 'speech-improvement-center',
