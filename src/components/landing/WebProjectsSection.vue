@@ -24,23 +24,44 @@
           :video-url="project.video_url || ''"
           :image-url="project.image_url || ''"
           :live-url="project.live_url || ''"
+          @play="openVideo"
         />
       </div>
     </div>
+
+    <VideoModal
+      :src="activeVideo.src"
+      :title="activeVideo.title"
+      :visible="activeVideo.visible"
+      @close="activeVideo.visible = false"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { gsap } from '@/lib/gsap-setup'
 import { useContentStore } from '@/stores/content'
 import IconBox from '@/components/shared/IconBox.vue'
+import VideoModal from '@/components/shared/VideoModal.vue'
 
 const content = useContentStore()
 const sectionRef = ref<HTMLElement | null>(null)
 const bgRef = ref<HTMLElement | null>(null)
 const cardsRef = ref<HTMLElement | null>(null)
 let ctx: gsap.Context | null = null
+
+const activeVideo = reactive({
+  src: '',
+  title: '',
+  visible: false
+})
+
+function openVideo(src: string, title: string) {
+  activeVideo.src = src
+  activeVideo.title = title
+  activeVideo.visible = true
+}
 
 const allWebProjects = computed(() =>
   content.projects.filter(p => p.category === 'web').sort((a, b) => a.sort_order - b.sort_order)

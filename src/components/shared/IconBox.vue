@@ -15,10 +15,10 @@
       <li v-for="tech in techStack" :key="tech" class="text-white/60 text-sm">{{ tech }}</li>
     </ul>
     <div class="flex gap-2 flex-wrap">
-      <a v-if="videoUrl" :href="videoUrl" target="_blank" rel="noopener noreferrer"
-        class="btn-primary rounded inline-block">
-        Watch Overview
-      </a>
+      <button v-if="videoUrl" @click="$emit('play', videoUrl, title)"
+        class="btn-primary rounded inline-block cursor-pointer">
+        ▶ Watch Demo
+      </button>
       <a v-if="liveUrl" :href="liveUrl" target="_blank" rel="noopener noreferrer"
         class="px-4 py-2 text-sm border border-white/20 text-white/70 hover:text-white hover:border-white/40 rounded transition-colors inline-block">
         Live Demo
@@ -34,5 +34,9 @@ defineProps<{
   videoUrl?: string
   imageUrl?: string
   liveUrl?: string
+}>()
+
+defineEmits<{
+  play: [src: string, title: string]
 }>()
 </script>

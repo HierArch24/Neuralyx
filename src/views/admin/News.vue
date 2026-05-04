@@ -582,7 +582,7 @@ function isBrokenUrl(url: string): boolean {
   return false
 }
 
-async function clearBrokenImage(article: { id: string; image_url: string }) {
+async function clearBrokenImage(article: { id: string; image_url: string | null }) {
   await admin.updateRow('news', article.id, { image_url: '' })
 }
 
