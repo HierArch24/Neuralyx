@@ -10,6 +10,31 @@
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest", "--browser", "msedge"]
+    },
+    "n8n": {
+      "command": "npx",
+      "args": ["n8n-mcp"],
+      "env": {
+        "MCP_MODE": "stdio",
+        "LOG_LEVEL": "error",
+        "DISABLE_CONSOLE_OUTPUT": "true",
+        "N8N_API_URL": "http://localhost:5678",
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzZGFlYzE0NS02MjRhLTRjNzItYTg4Yy1iZDFmZTNkNDAzZjMiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiN2Y3ZjQwNzMtOTA5Ny00MGUwLTkwMDUtZTQ5Zjg4MGFiZTQ2IiwiaWF0IjoxNzc2MzMzODU2fQ.bOIIW68CvmKuxDhOfDorzkp9gmXbV5UYIra3svU7HjM"
+      }
+    },
+    "n8n-workflows": {
+      "type": "http",
+      "url": "http://localhost:5678/mcp-server/http",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzZGFlYzE0NS02MjRhLTRjNzItYTg4Yy1iZDFmZTNkNDAzZjMiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6ImVlOGUzNDQwLTI2ZGQtNDA2My04ZTNlLTJkMmEyNDQ3NWI2ZiIsImlhdCI6MTc3NjMzNTY2M30.ULhJxn9kkacXM3WjYO0RwPqxwfTCufvvMGpa3sAt6Qg"
+      }
+    },
+    "heygen": {
+      "type": "http",
+      "url": "https://mcp.heygen.com/mcp/v1/",
+      "headers": {
+        "Authorization": "Bearer sk_V2_hgu_k3oBH78LKAL_3Ys6T7xf7zCRb2iSGqJQx0EC0pYphrgb"
+      }
     }
   }
 }

@@ -1308,10 +1308,21 @@ const refining      = ref(false)
 const refineError   = ref('')
 const refineLog     = ref('')
 
+// ── Manual Save to Question Bank ───────────────────────────────────────────
+const manualSaveStatus = ref<'' | 'saving' | 'saved'>('')
+function manualSaveToBank() {
+  if (!script.value.trim() || !question.value.trim()) return
+  manualSaveStatus.value = 'saving'
+  saveQuestion(script.value)
+  manualSaveStatus.value = 'saved'
+  setTimeout(() => { manualSaveStatus.value = '' }, 2500)
+}
+
 // Detect what the user pasted so the AI knows how to act
-const refineMode = computed<'jd' | 'company' | 'question' | 'correction'>(() => {
+const refineMode = computed<'jd' | 'company' | 'question' | 'straight' | 'correction'>(() => {
   const t = refineNote.value.trim()
   if (!t) return 'correction'
+  if (/straight.to.the.point|direct.answer|no.previous.role|remove.metric|no.metric|concise.only|keep.it.short.and.direct|no.fluff/i.test(t)) return 'straight'
   if (/responsibilities|requirements|qualifications|we are looking for|years of experience|job description|about the role|what you.ll do|what we.re looking for|key skills|preferred skills|nice to have|must have|tech stack|compensation|salary|benefits/i.test(t)) return 'jd'
   if (/our mission|about us|we are a|founded in|our team|our company|we believe|we help|our vision|company overview|who we are|what we do|our product|our platform/i.test(t)) return 'company'
   if (t.length < 350 && (/\?$/.test(t.trim()) || /^(what|why|how|tell|describe|walk|can you|could you|explain|share|talk)/i.test(t.trim()))) return 'question'
@@ -1323,6 +1334,7 @@ const refineModeLabel = computed(() => ({
   jd:         { icon: '📋', label: 'JD Mode',      hint: 'fills placeholders & aligns to the role' },
   company:    { icon: '🏢', label: 'Company Mode',  hint: 'fills placeholders from their mission' },
   question:   { icon: '❓', label: 'Question Mode', hint: 'adapts script to new question angle' },
+  straight:   { icon: '🎯', label: 'Direct Mode',   hint: 'straight to the point — no roles, no metrics, no fluff' },
   correction: { icon: '✏️', label: 'Edit Mode',    hint: 'applies your instructions only' },
 }[refineMode.value]))
 
@@ -1335,6 +1347,7 @@ async function refineScript() {
     jd:         '📋 Tailoring to job description…',
     company:    '🏢 Infusing company context…',
     question:   '❓ Adapting to new question angle…',
+    straight:   '🎯 Making it direct and concise…',
     correction: '🔧 Applying corrections…',
   }
   refineLog.value = modeLabels[refineMode.value]
@@ -1377,6 +1390,14 @@ ${refineMode.value === 'question' ? `ALTERNATIVE QUESTION MODE:
 - Adapt the script so it directly answers this new question's framing and intent
 - Keep Gabriel's core proof points but restructure the narrative to match what's actually being asked
 - If the new question is more specific, make the answer more specific` : ''}
+${refineMode.value === 'straight' ? `STRAIGHT-TO-THE-POINT MODE:
+- Remove ALL mentions of previous roles, company names, and work history
+- Remove ALL metrics, numbers, percentages, and quantified results
+- Remove ALL fluff, filler phrases, and unnecessary context
+- Give a direct, concise answer that gets straight to the point
+- Keep it to 80-120 words maximum
+- Use simple, clear language — no jargon or buzzwords
+- Focus on WHAT and HOW, not WHERE or WHEN` : ''}
 ${refineMode.value === 'correction' ? `CORRECTION MODE:
 - Apply ONLY what the user asked to change
 - Keep everything else the same unless it needs to change as a result` : ''}
@@ -3323,6 +3344,7 @@ ${svc.disabled ? `
                     'border-blue-500/40 bg-blue-500/10 text-blue-300':   refineMode === 'jd',
                     'border-purple-500/40 bg-purple-500/10 text-purple-300': refineMode === 'company',
                     'border-cyan-500/40 bg-cyan-500/10 text-cyan-300':   refineMode === 'question',
+                    'border-red-500/40 bg-red-500/10 text-red-300':      refineMode === 'straight',
                     'border-yellow-500/40 bg-yellow-500/10 text-yellow-300': refineMode === 'correction',
                   }">
                   {{ refineModeLabel.icon }} {{ refineModeLabel.label }}
@@ -3344,6 +3366,7 @@ ${svc.disabled ? `
                     { label: '📋 Paste JD here',              value: '' },
                     { label: '🏢 Use their About Us',          value: '' },
                     { label: '❓ Rephrase for new question',   value: '' },
+                    { label: '🎯 Straight to the point',       value: 'Straight to the point — no previous role, no metrics, no fluff' },
                     { label: 'Make it shorter, max 120 words', value: 'Make it shorter, max 120 words' },
                     { label: 'Sound more confident',           value: 'Sound more confident, less humble' },
                     { label: 'Rewrite the opening line',       value: 'Rewrite the opening line' },
@@ -3381,6 +3404,22 @@ ${svc.disabled ? `
                   <span v-if="refineError" class="text-[11px] text-red-400 font-mono truncate">{{ refineError }}</span>
                 </div>
               </div>
+            </div>
+
+            <!-- ── Save to Question Bank Button ── -->
+            <div v-if="script.trim()" class="mt-3 flex items-center gap-3">
+              <button @click="manualSaveToBank"
+                :disabled="manualSaveStatus === 'saving'"
+                class="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                :class="manualSaveStatus === 'saved'
+                  ? 'border border-green-500/40 bg-green-500/10 text-green-400'
+                  : 'border border-neural-500 text-gray-400 hover:border-cyber-purple/50 hover:text-cyber-purple hover:bg-cyber-purple/5'">
+                <span v-if="manualSaveStatus === 'saving'" class="w-3 h-3 animate-spin">⏳</span>
+                <span v-else-if="manualSaveStatus === 'saved'" class="text-sm">✅</span>
+                <span v-else class="text-sm">💾</span>
+                {{ manualSaveStatus === 'saved' ? 'Saved to Question Bank' : (manualSaveStatus === 'saving' ? 'Saving…' : 'Save to Question Bank') }}
+              </button>
+              <span class="text-[10px] text-gray-600">Stores question + answer for quick reuse</span>
             </div>
           </div>
 
