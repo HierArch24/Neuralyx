@@ -9,7 +9,7 @@
             style="background-image: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end))">
           Web Development Projects ->
         </h1>
-        <RouterLink v-if="allWebProjects.length > 3" to="/projects?category=web"
+        <RouterLink v-if="allWebProjects.length > 6" to="/projects?category=web"
           class="text-sm text-cyber-cyan/60 hover:text-cyber-cyan transition-colors whitespace-nowrap ml-4">
           View All ({{ allWebProjects.length }}) &rsaquo;
         </RouterLink>
@@ -67,7 +67,12 @@ const allWebProjects = computed(() =>
   content.projects.filter(p => p.category === 'web').sort((a, b) => a.sort_order - b.sort_order)
 )
 
-const displayProjects = computed(() => allWebProjects.value.slice(0, 3))
+// Show video projects first, then others — up to 6 total
+const displayProjects = computed(() => {
+  const withVideo = allWebProjects.value.filter(p => p.video_url)
+  const without = allWebProjects.value.filter(p => !p.video_url)
+  return [...withVideo, ...without].slice(0, 6)
+})
 
 onMounted(() => {
   if (!sectionRef.value) return
