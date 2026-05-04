@@ -15,13 +15,19 @@ export interface ThumbnailResult {
  * Check if MCP server is reachable (local Docker)
  */
 async function isMcpAvailable(): Promise<boolean> {
+  const url = getMcpUrl()
+  // Never treat localhost/127.0.0.1 as available on live deployments
+  if (url.includes('localhost') || url.includes('127.0.0.1')) {
+    if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost')) {
+      return false
+    }
+  }
   try {
-    const res = await fetch(`${getMcpUrl()}/api/health`, { signal: AbortSignal.timeout(2000) })
+    const res = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(2000) })
     return res.ok
   } catch {
-    // Also try a simple HEAD to uploads
     try {
-      const res = await fetch(getMcpUrl(), { method: 'HEAD', signal: AbortSignal.timeout(2000) })
+      const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2000) })
       return res.ok || res.status === 404
     } catch {
       return false
@@ -30,21 +36,15 @@ async function isMcpAvailable(): Promise<boolean> {
 }
 
 /**
- * Take a screenshot via microlink.io (works from anywhere)
+ * Take a screenshot via microlink.io (works from anywhere).
+ * Returns the permanent CDN URL — never a blob: or localhost URL.
  */
 async function screenshotDirect(sourceUrl: string): Promise<string | null> {
   try {
-    const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(sourceUrl)}&screenshot=true&meta=false&embed=screenshot.url`
+    // Use JSON endpoint (no embed) to get the permanent screenshot CDN URL
+    const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(sourceUrl)}&screenshot=true&meta=false`
     const res = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) })
     if (!res.ok) return null
-    // microlink with embed returns the image directly
-    const contentType = res.headers.get('content-type') || ''
-    if (contentType.startsWith('image/')) {
-      // Convert to blob URL or data URI
-      const blob = await res.blob()
-      return URL.createObjectURL(blob)
-    }
-    // If JSON response, extract screenshot URL
     const data = await res.json()
     return data?.data?.screenshot?.url || null
   } catch {

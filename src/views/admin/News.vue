@@ -573,8 +573,21 @@ async function generateThumbForArticle(article: NewsArticle) {
   }
 }
 
+function isBrokenUrl(url: string): boolean {
+  if (!url) return true
+  // localhost/127.0.0.1 URLs don't work on live site
+  if (url.includes('localhost') || url.includes('127.0.0.1')) return true
+  // blob: URLs are session-only and never persist
+  if (url.startsWith('blob:')) return true
+  return false
+}
+
+async function clearBrokenImage(article: { id: string; image_url: string }) {
+  await admin.updateRow('news', article.id, { image_url: '' })
+}
+
 const articlesWithoutImages = computed(() =>
-  admin.news.filter(a => !a.image_url)
+  admin.news.filter(a => !a.image_url || isBrokenUrl(a.image_url))
 )
 
 async function batchFixMissingImages() {
@@ -959,8 +972,9 @@ async function unpinFromLanding(article: NewsArticle) {
                     </svg>
                   </div>
                   <!-- Current image -->
-                  <template v-else-if="article.image_url">
-                    <img :src="article.image_url" :alt="article.title" class="w-full h-full object-cover" />
+                  <template v-else-if="article.image_url && !isBrokenUrl(article.image_url)">
+                    <img :src="article.image_url" :alt="article.title" class="w-full h-full object-cover"
+                      @error="clearBrokenImage(article)" />
                     <!-- Hover overlay -->
                     <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-0.5">
                       <label class="text-[9px] text-white/80 cursor-pointer hover:text-white">

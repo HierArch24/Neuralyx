@@ -20,23 +20,6 @@
         </router-link>
       </div>
 
-      <!-- Search Bar -->
-      <div class="relative mb-8 max-w-md">
-        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Search news... try 'mcp', 'tool', 'ai-agent'"
-          class="w-full pl-11 pr-10 py-2.5 rounded-xl border border-white/[0.08] text-sm font-[Poppins] text-white placeholder-white/25 focus:border-white/20 focus:outline-none transition-colors"
-          style="background: rgba(255,255,255,0.03);"
-        />
-        <button v-if="searchQuery" @click="searchQuery = ''" class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
-
       <!-- News Cards Grid -->
       <div ref="cardsRef" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div
