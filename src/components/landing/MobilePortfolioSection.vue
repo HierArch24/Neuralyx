@@ -109,20 +109,20 @@ interface Project {
 }
 
 const projects: Project[] = [
-  { name: 'Tarakain', category: 'Eatery Finder App', thumbnail: '/assets/images/portfolio/mobile/1.png', videoUrl: '/videos/Kainderya.mp4', accentColor: 'rgb(30, 183, 63)' },
-  { name: 'Adutucart', category: 'Grocery App', thumbnail: '/assets/images/portfolio/mobile/2.png', videoUrl: '/videos/Adutucart.mp4' },
-  { name: 'Ishaan', category: 'Learning Management App', thumbnail: '/assets/images/portfolio/mobile/3.png', videoUrl: '/videos/Ishaan.mp4' },
-  { name: 'Mindwell', category: 'Health App', thumbnail: '/assets/images/portfolio/mobile/4.png', videoUrl: '/videos/Mindwell.mp4', accentColor: 'rgb(27, 167, 192)' },
-  { name: 'Rescuenet', category: 'Emergency Relief App', thumbnail: '/assets/images/portfolio/mobile/5.png', videoUrl: '/videos/Rescuenet.mp4', accentColor: 'rgb(0, 0, 0)' },
-  { name: 'Telemedicare', category: 'Health App', thumbnail: '/assets/images/portfolio/mobile/6.png', videoUrl: '/videos/Telemedicare.mp4' },
-  { name: 'Comfpee', category: 'Public Comfort App', thumbnail: '/assets/images/portfolio/mobile/7.png', videoUrl: '/videos/ComfPee.mp4' },
-  { name: 'Transire', category: 'Hotel Booking App', thumbnail: '/assets/images/portfolio/mobile/8.png', videoUrl: '/videos/Transire.mp4' },
-  { name: 'Do-mi', category: 'Community Service App', thumbnail: '/assets/images/portfolio/mobile/9.png', videoUrl: '/videos/Domi.mp4' },
-  { name: 'Spree', category: 'Safety Navigator App', thumbnail: '/assets/images/portfolio/mobile/10.png', videoUrl: '/videos/Spree.mp4', accentColor: 'rgba(128, 28, 0, 0.895)' },
-  { name: 'Eima', category: 'Learning Management App', thumbnail: '/assets/images/portfolio/mobile/11.png', videoUrl: '/videos/EIMa.mp4' },
-  { name: 'Play n Learn', category: 'Game & Learning App', thumbnail: '/assets/images/portfolio/mobile/12.png', videoUrl: '/videos/Play n Learn.mp4', accentColor: 'rgb(255, 0, 111)' },
-  { name: 'Pasabay', category: 'Car Booking App', thumbnail: '/assets/images/portfolio/mobile/13.jpg', videoUrl: '/videos/Pasabay.mp4', accentColor: 'rgb(174, 183, 0)' },
-  { name: 'Ecomart', category: 'Grocery App', thumbnail: '/assets/images/portfolio/mobile/14.jpg', videoUrl: '/videos/Ecomart.mp4', accentColor: 'rgba(2, 213, 87, 0.778)' },
+  { name: 'Tarakain', category: 'Eatery Finder App', thumbnail: '/assets/images/portfolio/mobile/1.png', videoUrl: '/assets/videos/Kainderya.mp4', accentColor: 'rgb(30, 183, 63)' },
+  { name: 'Adutucart', category: 'Grocery App', thumbnail: '/assets/images/portfolio/mobile/2.png', videoUrl: '/assets/videos/Adutucart.mp4' },
+  { name: 'Ishaan', category: 'Learning Management App', thumbnail: '/assets/images/portfolio/mobile/3.png', videoUrl: '/assets/videos/Ishaan.mp4' },
+  { name: 'Mindwell', category: 'Health App', thumbnail: '/assets/images/portfolio/mobile/4.png', videoUrl: '/assets/videos/Mindwell.mp4', accentColor: 'rgb(27, 167, 192)' },
+  { name: 'Rescuenet', category: 'Emergency Relief App', thumbnail: '/assets/images/portfolio/mobile/5.png', videoUrl: '/assets/videos/Rescuenet.mp4', accentColor: 'rgb(0, 0, 0)' },
+  { name: 'Telemedicare', category: 'Health App', thumbnail: '/assets/images/portfolio/mobile/6.png', videoUrl: '/assets/videos/Telemedicare.mp4' },
+  { name: 'Comfpee', category: 'Public Comfort App', thumbnail: '/assets/images/portfolio/mobile/7.png', videoUrl: '/assets/videos/ComfPee.mp4' },
+  { name: 'Transire', category: 'Hotel Booking App', thumbnail: '/assets/images/portfolio/mobile/8.png', videoUrl: '/assets/videos/Transire.mp4' },
+  { name: 'Do-mi', category: 'Community Service App', thumbnail: '/assets/images/portfolio/mobile/9.png', videoUrl: '/assets/videos/Domi.mp4' },
+  { name: 'Spree', category: 'Safety Navigator App', thumbnail: '/assets/images/portfolio/mobile/10.png', videoUrl: '/assets/videos/Spree.mp4', accentColor: 'rgba(128, 28, 0, 0.895)' },
+  { name: 'Eima', category: 'Learning Management App', thumbnail: '/assets/images/portfolio/mobile/11.png', videoUrl: '/assets/videos/EIMa.mp4' },
+  { name: 'Play n Learn', category: 'Game & Learning App', thumbnail: '/assets/images/portfolio/mobile/12.png', videoUrl: '/assets/videos/Play n Learn.mp4', accentColor: 'rgb(255, 0, 111)' },
+  { name: 'Pasabay', category: 'Car Booking App', thumbnail: '/assets/images/portfolio/mobile/13.jpg', videoUrl: '/assets/videos/Pasabay.mp4', accentColor: 'rgb(174, 183, 0)' },
+  { name: 'Ecomart', category: 'Grocery App', thumbnail: '/assets/images/portfolio/mobile/14.jpg', videoUrl: '/assets/videos/Ecomart.mp4', accentColor: 'rgba(2, 213, 87, 0.778)' },
 ]
 
 function openVideo(project: Project) {

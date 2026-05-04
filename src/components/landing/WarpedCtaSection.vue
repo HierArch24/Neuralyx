@@ -35,7 +35,7 @@
           Get In Touch
         </a>
       </div>
-      <VideoModal :visible="showVideo" src="/videos/Introduction_video.mp4" title="Introduction — Gabriel Alvin Aquino" @close="showVideo = false" />
+      <VideoModal :visible="showVideo" src="/assets/videos/Introduction_video.mp4" title="Introduction — Gabriel Alvin Aquino" @close="showVideo = false" />
     </div>
   </section>
 </template>
