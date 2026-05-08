@@ -1,6 +1,20 @@
+# ---- CloudLinux Passenger (NEURALYX MCP server, Node) ----
+# /api/* requests are routed to the mcp-server Passenger app at
+# /home/devenvir/neuralyx-mcp. This block must come BEFORE any RewriteRule,
+# otherwise the SPA fallback captures /api/* and returns index.html.
+PassengerAppRoot "/home/devenvir/neuralyx-mcp"
+PassengerBaseURI "/api"
+PassengerNodejs "/opt/alt/alt-nodejs22/root/usr/bin/node"
+PassengerAppType node
+PassengerStartupFile app.js
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Skip rewrite for API routes — Passenger Node app handles them
+  RewriteCond %{REQUEST_URI} ^/api(/|$)
+  RewriteRule ^ - [L]
 
   # Skip rewrite for actual files and directories
   RewriteCond %{REQUEST_FILENAME} -f [OR]
