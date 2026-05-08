@@ -28,18 +28,46 @@ jobs:
           VITE_OPENAI_KEY: ${{ env.VITE_OPENAI_KEY }}
           VITE_GEMINI_KEY: ${{ secrets.VITE_GEMINI_KEY }}
 
+      - name: Build mcp-server (Node backend)
+        working-directory: mcp-server
+        run: |
+          npm ci
+          npm run build
+
       - name: Deploy to cPanel via rsync
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          DEPLOY_PATH: /home/devenvir/neuralyx.ai.dev-environment.site/
+          FRONTEND_PATH: /home/devenvir/neuralyx.ai.dev-environment.site/
+          MCP_PATH: /home/devenvir/neuralyx-mcp/
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p 27015 dev-environment.site >> ~/.ssh/known_hosts 2>/dev/null
 
+          # Frontend SPA → static dir (preserves uploaded videos)
           rsync -avz --delete \
             --filter='protect assets/videos/***' \
             --exclude='assets/videos/' \
             -e "ssh -i ~/.ssh/deploy_key -p 27015 -o StrictHostKeyChecking=no" \
-            ./dist/ devenvir@dev-environment.site:$DEPLOY_PATH
+            ./dist/ devenvir@dev-environment.site:$FRONTEND_PATH
+
+          # mcp-server (Node) → cPanel Passenger app dir
+          # Ship dist + app.js + package*.json. Preserve runtime dirs
+          # (uploads/, logs/, node_modules/) so we don't wipe state or
+          # need a fresh npm ci every deploy.
+          rsync -avz --delete \
+            --include='dist/' --include='dist/**' \
+            --include='app.js' --include='package.json' --include='package-lock.json' \
+            --exclude='node_modules/' --exclude='uploads/' --exclude='logs/' --exclude='tmp/' \
+            --exclude='*' \
+            -e "ssh -i ~/.ssh/deploy_key -p 27015 -o StrictHostKeyChecking=no" \
+            ./mcp-server/ devenvir@dev-environment.site:$MCP_PATH
+
+          # Ensure deps are in sync with package-lock and restart Passenger
+          ssh -i ~/.ssh/deploy_key -p 27015 -o StrictHostKeyChecking=no \
+              devenvir@dev-environment.site \
+              "source /home/devenvir/nodevenv/neuralyx-mcp/22/bin/activate && \
+               cd /home/devenvir/neuralyx-mcp && \
+               npm ci --omit=dev --no-audit --no-fund && \
+               /usr/sbin/cloudlinux-selector restart --json --interpreter nodejs --user devenvir --app-root /home/devenvir/neuralyx-mcp"
