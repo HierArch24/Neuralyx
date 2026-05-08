@@ -16,6 +16,7 @@ const transcribeModel = ref<'gpt-4o-mini-transcribe' | 'gpt-4o-transcribe' | 'wh
   (localStorage.getItem('neuralyx_transcribe_model') as any) || 'gpt-4o-mini-transcribe'
 )
 const whisperLocalUrl = ref<string>(localStorage.getItem('neuralyx_whisper_local_url') || 'http://localhost:7870')
+const whisperHfUrl = (import.meta.env.VITE_WHISPER_HF_URL as string | undefined) || 'https://developer26-neuralyx-whisper.hf.space'
 const audioLevel = ref(0)
 watch(transcribeModel, v => localStorage.setItem('neuralyx_transcribe_model', v))
 let chatMediaRecorder: MediaRecorder | null = null
@@ -366,14 +367,23 @@ async function callTranscribe(blob: Blob, model: string, filename: string): Prom
     fd.append('language', 'en')
     fd.append('prompt', contextPrompt)
     fd.append('vad', 'true')
-    const res = await fetch(`${whisperLocalUrl.value.replace(/\/$/, '')}/transcribe`, {
-      method: 'POST',
-      body: fd,
-    })
-    if (!res.ok) {
-      const errTxt = await res.text().catch(() => '')
-      throw new Error(`local-whisper ${res.status}: ${errTxt.slice(0, 120)}`)
+    // Local Whisper → HF Space fallback
+    let res: Response | null = null
+    let lastErr = ''
+    for (const base of [whisperLocalUrl.value, whisperHfUrl]) {
+      try {
+        const r = await fetch(`${base.replace(/\/$/, '')}/transcribe`, { method: 'POST', body: fd })
+        if (r.ok) {
+          console.info(`[InterviewChatPopout] whisper hit ${base === whisperLocalUrl.value ? 'local' : 'HF'}`)
+          res = r
+          break
+        }
+        lastErr = `${base} → HTTP ${r.status}`
+      } catch (e) {
+        lastErr = `${base} → ${e instanceof Error ? e.message : String(e)}`
+      }
     }
+    if (!res) throw new Error(`local-whisper unreachable, HF fallback failed: ${lastErr}`)
     const data: any = await res.json()
     return (data.text || '').trim()
   }

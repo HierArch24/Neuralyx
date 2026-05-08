@@ -313,16 +313,23 @@ const DOMAINS = [
   { id: 'data', name: 'Data Automation & Analytics', keywords: ['data', 'analytics', 'report', 'dashboard', 'etl', 'extract', 'transform', 'visualization', 'metrics', 'kpi', 'spreadsheet', 'database', 'sql', 'csv', 'pdf report', 'reconciliation', 'financial', 'power bi'], tools: ['Supabase', 'PostgreSQL', 'Python', 'n8n', 'Power BI'], recs: ['Automated data extraction', 'ETL pipeline', 'Real-time analytics dashboard', 'PDF report generation'], prereqs: ['Data sources identified', 'Reporting needs defined', 'Dashboard specs ready'] },
 ]
 
+// Model: latest available — bump here when OpenAI ships newer
+const VALIDATE_MODEL = 'gpt-5.5'
+
 async function callGPT(input: string): Promise<string | null> {
   const apiKey = localStorage.getItem('neuralyx_openai_key') || import.meta.env.VITE_OPENAI_KEY
-  if (!apiKey) return null
+  if (!apiKey) {
+    console.warn('[ValidateNeedModal] no OpenAI key found (localStorage:neuralyx_openai_key or VITE_OPENAI_KEY) — falling back to keyword matcher')
+    return null
+  }
 
+  console.info(`[ValidateNeedModal] firing OpenAI validate request (model=${VALIDATE_MODEL})`)
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: VALIDATE_MODEL,
         messages: [
           {
             role: 'system',
@@ -346,10 +353,18 @@ Match percentages should reflect how well NEURALYX expertise (n8n, AI agents, Do
       })
     })
 
-    if (!res.ok) return null
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      console.error(`[ValidateNeedModal] OpenAI ${VALIDATE_MODEL} returned ${res.status}:`, errText.slice(0, 300))
+      return null
+    }
     const data = await res.json()
-    return data.choices?.[0]?.message?.content || null
-  } catch {
+    const content = data.choices?.[0]?.message?.content || null
+    console.info(`[ValidateNeedModal] OpenAI ${VALIDATE_MODEL} OK — ${(content || '').length} chars returned`)
+    return content
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[ValidateNeedModal] OpenAI ${VALIDATE_MODEL} threw:`, msg)
     return null
   }
 }

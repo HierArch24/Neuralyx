@@ -31,9 +31,12 @@ async function runHealthChecks() {
     'frontend': async () => await checkUrl('http://localhost:3000/'),
     'postgres': async () => { try { await fetch('http://localhost:8080/api/health', { signal: AbortSignal.timeout(3000) }); return 'active' } catch { return 'offline' } },
     'gaze': async () => await checkUrl('http://localhost:7881/'),
+    'gaze-hf': async () => await checkUrl('https://developer26-sted-gaze-onnx.hf.space/health', 8000),
     'sadtalker': async () => await checkUrl('http://localhost:7860/'),
     'voxcpm': async () => await checkUrl('http://localhost:7861/'),
+    'voxcpm-hf': async () => await checkUrl('https://developer26-neuralyx-voxcpm.hf.space/health', 8000),
     'whisper': async () => await checkUrl('http://localhost:7870/'),
+    'whisper-hf': async () => await checkUrl('https://developer26-neuralyx-whisper.hf.space/health', 8000),
     'n8n': async () => await checkUrl('http://localhost:5678/'),
     'searxng': async () => await checkUrl('http://localhost:8888/'),
     'browserless': async () => await checkUrl('http://localhost:3333/'),
@@ -65,6 +68,11 @@ const connections = ref<Connection[]>([
   { id: 11, name: 'neuralyx-browser-harness', type: 'Browser Agent', category: 'infrastructure', status: 'configured', detail: 'AI-driven apply fallback — Claude-driven CDP to Edge', endpoint: 'localhost:7880' },
   { id: 12, name: 'neuralyx-browser-use', type: 'Browser Agent', category: 'infrastructure', status: 'configured', detail: 'browser-use library — Tier-3 real browser escalation', endpoint: 'localhost:7882' },
   { id: 13, name: 'neuralyx-ai', type: 'AI Service', category: 'infrastructure', status: 'active', detail: 'AI service wrapper — connects to MCP server', endpoint: 'localhost:8090' },
+
+  // ─── Hugging Face Space fallbacks (Developer26) ─────────────────────
+  { id: 130, name: 'whisper-hf', type: 'AI Service', category: 'infrastructure', status: 'active',     detail: 'HF Space fallback — faster-whisper (small.en, int8 CPU)',       endpoint: 'developer26-neuralyx-whisper.hf.space' },
+  { id: 131, name: 'gaze-hf',    type: 'AI Service', category: 'infrastructure', status: 'active',     detail: 'HF Space fallback — STED-Gaze ONNX (gaze redirection)',         endpoint: 'developer26-sted-gaze-onnx.hf.space' },
+  { id: 132, name: 'voxcpm-hf',  type: 'AI Service', category: 'infrastructure', status: 'configured', detail: 'HF Space fallback — VoxCPM voice clone (currently 404, needs Dockerfile push)', endpoint: 'developer26-neuralyx-voxcpm.hf.space' },
 
   // ═══════════════════════════════════════════════════════
   // MCP SERVERS — 14 Configured in .mcp.json

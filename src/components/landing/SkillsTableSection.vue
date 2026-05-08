@@ -24,37 +24,47 @@
           <tbody>
             <tr>
               <td class="bg-black/40 font-semibold">Languages</td>
-              <td>Python, R, SQL</td>
-              <td>Java, Kotlin, Dart, C#</td>
-              <td>TypeScript, JavaScript, PHP, Python</td>
-              <td>Bash, YAML, Python</td>
+              <td>Python, R</td>
+              <td>Java, Kotlin, Flutter (Dart), PHP / Basic Web Tech</td>
+              <td>JavaScript, TypeScript, Python, PHP, WordPress</td>
+              <td>C#, C++, JavaScript &nbsp;<span class="opacity-60">(Game Dev)</span></td>
             </tr>
             <tr>
               <td class="bg-black/40 font-semibold">Database / Storage</td>
-              <td colspan="4">PostgreSQL, MySQL, MongoDB, SQLite, Room, Firebase, Supabase, Redis<br><strong>Vector DB</strong>: Pinecone, Weaviate, Faiss, ChromaDB &nbsp;|&nbsp; <strong>OS</strong>: Linux, Windows, Android</td>
+              <td colspan="4">MySQL, PostgreSQL (pgvector), MongoDB, SQLite, Room, Firebase, Supabase &nbsp;|&nbsp; <strong>Vector DB</strong>: Pinecone, Weaviate, Faiss &nbsp;|&nbsp; <strong>OS</strong>: Linux, Windows, Android</td>
             </tr>
             <tr>
               <td class="bg-black/40 font-semibold">Libraries</td>
-              <td>NumPy, Pandas, Matplotlib, TorchVision, Keras, PyTorch, Scikit-learn, OpenCV, YOLOv11, OpenVINO, Transformers<br><strong>Platforms</strong>: Roboflow, HuggingFace</td>
-              <td>React Native, Jetpack Compose, Retrofit, RxJava, Kotlin Coroutines, Glide, Dagger Hilt, Cordova</td>
-              <td>Vue.js 3, React, GSAP, Tailwind CSS, jQuery, Pinia, Axios</td>
-              <td>Docker Compose, GitHub Actions, Playwright, Nginx</td>
+              <td>NumPy, Pandas, Matplotlib, TorchVision, Keras, PyTorch, Scikit-learn, OpenCV, YOLOv11, OpenVINO<br><strong>Platforms</strong>: Roboflow, HuggingFace</td>
+              <td>React Native, Cordova, Retrofit, RxJava, Jetpack, Kotlin Coroutines, Glide, Dagger Hilt</td>
+              <td>React Native, Vue.js, Angular, jQuery, ASP.NET</td>
+              <td>OpenGL, DirectX &nbsp;<span class="opacity-60">(Unity / Blender)</span></td>
             </tr>
             <tr>
               <td class="bg-black/40 font-semibold">Frameworks / Tools</td>
-              <td>TensorFlow, Langchain, LlamaIndex, Langflow, Jupyter, Anaconda, Claude API, OpenAI API</td>
-              <td>Ionic, Capacitor, PWA Builder, Multi-OS Engine, Codename One, Android Studio</td>
-              <td>Vite, Django, Flask, Laravel, CodeIgniter, Bootstrap, WordPress, Cpanel</td>
-              <td>Docker, AWS, GCP, DigitalOcean, Git, n8n, Zapier, Make</td>
+              <td>Jupyter Notebook, Anaconda, Docker, LangChain, Langflow, LlamaIndex, TensorFlow, AWS (EC2, Lambda), Google Cloud, DigitalOcean, Git</td>
+              <td>Multi-OS Engine, Codename One, Appcelerator Titanium, Ionic, Cordova, Capacitor, PWA Builder, Git</td>
+              <td>Bootstrap, Tailwind, Django, Flask, Laravel, CodeIgniter, cPanel, Git, Vercel</td>
+              <td>Unity, Blender, Git</td>
             </tr>
             <tr>
-              <td class="bg-black/40 font-semibold">AI Automation</td>
-              <td><strong>Agent Frameworks</strong>: Langchain, LlamaIndex, Claude Agent SDK, CrewAI</td>
-              <td colspan="3"><strong>Platforms</strong>: n8n, Zapier, Make, Smythos, Abacus.AI, Ringcentral, Synthesia, GHL, Slack, Delphi.AI, Airtable, 11labs</td>
+              <td class="bg-black/40 font-semibold">Automation Workflow</td>
+              <td colspan="2" class="text-left px-4">
+                <strong>Low-Code Platforms</strong>: n8n, Zapier, Make, SmythOS, Abacus.AI<br>
+                <strong>AI Coding Tools</strong>: Claude Code, Claude Design, Codex (GPT), Qwen, Ollama, GitHub Copilot, Letta Code
+              </td>
+              <td colspan="2" class="text-left px-4">
+                <strong>Platforms</strong>: RingCentral, Synthesia, GoHighLevel, Slack, Delphi.AI, HuggingFace, Airtable, Lovable, 11labs<br>
+                <strong>Default Frameworks</strong>: MCP setup, Skills setup, Embedding, Transformers, Prompt Engineering, Multi-Agent Orchestration, Message Parsing, State Management
+              </td>
             </tr>
             <tr>
-              <td class="bg-black/40 font-semibold">Game Dev</td>
-              <td colspan="4">Unity (C#), Blender 3D Modelling, OpenGL, DirectX &nbsp;|&nbsp; <strong>Soft Skills</strong>: Analytical Thinking, Problem-Solving, Leadership, Continuous Learning, Teamwork, Communication</td>
+              <td class="bg-black/40 font-semibold">CRM / Collab / Comms</td>
+              <td colspan="4">GoHighLevel, HubSpot, Zoho, Google Workspace, Jira / Atlassian, Slack, Contentful, ClickUp, MS Teams &nbsp;|&nbsp; <strong>Methodology</strong>: Scrum Master</td>
+            </tr>
+            <tr>
+              <td class="bg-black/40 font-semibold">Soft Skills</td>
+              <td colspan="4">Analytical Thinking, Continuous Learning, Problem-Solving, Time Management, Communication, Teamwork, Leadership, Critical Thinking</td>
             </tr>
           </tbody>
         </table>

@@ -43,6 +43,7 @@ const RIGHT_EYE_LM = { corners: [362, 263], vert: [386, 374] }
 
 export interface GazeCorrector {
   readonly available: Ref<boolean>
+  readonly loading: Ref<boolean>
   readonly loadError: Ref<string | null>
   init(): Promise<void>
   /** Apply the ONNX warp to the canvas in place using the latest video frame. */
@@ -67,6 +68,7 @@ function eyeBox(lm: NormalizedLandmark[], spec: typeof LEFT_EYE_LM, w: number, h
 
 export function useGazeCorrector(): GazeCorrector {
   const available = ref(false)
+  const loading = ref(false)
   const loadError = ref<string | null>(null)
   let session: import('onnxruntime-web').InferenceSession | null = null
   let landmarker: FaceLandmarker | null = null
@@ -88,6 +90,7 @@ export function useGazeCorrector(): GazeCorrector {
   async function init() {
     if (initStarted) return
     initStarted = true
+    loading.value = true
     try {
       const hasModel = await probeModel()
       if (!hasModel) {
@@ -120,6 +123,8 @@ export function useGazeCorrector(): GazeCorrector {
       loadError.value = e instanceof Error ? e.message : String(e)
       available.value = false
       session = null
+    } finally {
+      loading.value = false
     }
   }
 
@@ -216,6 +221,7 @@ export function useGazeCorrector(): GazeCorrector {
 
   return {
     available,
+    loading,
     loadError,
     init,
     async correct(video, canvas) {

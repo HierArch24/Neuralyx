@@ -199,6 +199,30 @@ const FALLBACK_RESUME_HTML = `<div class="resume-ats">
     <div class="job">
       <div class="job-header">
         <div>
+          <h3>Head Automation Engineer — AI / Full-Stack <span class="company">(Current)</span></h3>
+          <p class="company-name">Excis Compliance Corporation · Remote (Philippines)</p>
+        </div>
+        <span class="dates">September 2025 – Present</span>
+      </div>
+      <ul>
+        <li><strong>One-line summary:</strong> Led the design and delivery of an AI-driven billing automation platform that cut Excis Compliance Corporation's monthly billing cycle by <strong>~85%</strong>, removed <strong>~95%</strong> of manual invoice work, and brought audit traceability to <strong>100%</strong> — across four regions and a Tier-1 customer base (HCL/Caterpillar etc.).</li>
+        <li>Architected an end-to-end automation that takes a finance operator from "raw tickets in ManageEngine" to "approved PO-deducted invoice ready for Xero" in a single browser session — AI handles validation, rate-card matching, and anomaly detection.</li>
+        <li>Cut a typical monthly billing cycle from <strong>3–5 days</strong> of manual work down to <strong>under 2 hours</strong> per customer batch (~85–90% reduction).</li>
+        <li>Drove rate-card match accuracy to <strong>~95%</strong> on first pass using a hybrid AI matcher (deterministic scoring + AI vector-search fallback) — replacing an LLM-only workflow that was both slower and less accurate, while reducing AI token spend by <strong>~80%</strong>.</li>
+        <li>Reduced billing errors and rework by an estimated <strong>70–80%</strong> by validating every ticket with AI against the FSO calculation rules (Dispatch / Dedicated / SV / Standby / Project) before reviewer.</li>
+        <li>Collapsed approval turnaround from days to minutes (<strong>~75% faster</strong>) via single-click in-app review, replacing the email-thread approval limbo.</li>
+        <li>Delivered <strong>100% audit traceability</strong> (up from ~0%) — every ticket fetch, AI decision, rate-card match, human approval, PO deduction, and invoice push permanently logged with timestamps, actor, and reason.</li>
+        <li>Scaled coverage from a single region to <strong>4 regions</strong> (APAC, EMEA, NAM, LATAM) in one pipeline, with automatic country → region inference and per-country VAT rule resolution.</li>
+        <li>Cut PO reconciliation overhead by <strong>~60%</strong> with auto-matching + balance-before/after tracking, flagging PO over-utilisation before invoicing.</li>
+        <li>Removed duplicate-ticket inflation overstating finance totals by up to <strong>6×</strong> on some PO reports — deduplication retrofit collapsed 212 raw rows to 33 true tickets, restoring trust in the figures.</li>
+        <li>Replaced manual Xero entry with direct API push: invoices now auto-generate, get approved, and land in Xero as draft/submitted entries.</li>
+        <li>Owned: pipeline (ServiceDesk → AI validation → rate-card match → Xero push), AI strategy & integration, operator-facing dashboards (Monitor Billing, Billing Run Wizard, PO Report, Step 4 Finalized Report), CI/CD to production cPanel, compliance/audit posture (versioned pre-billing files, OT/Weekend reason gates, tamper-evident timeline).</li>
+      </ul>
+    </div>
+
+    <div class="job">
+      <div class="job-header">
+        <div>
           <h3>Lead Full-Stack Developer & AI Engineer <span class="company">(Solo Developer)</span></h3>
           <p class="company-name">Wonder Group Pty Ltd — Project: LIVITI AI Content Studio</p>
         </div>
@@ -363,21 +387,31 @@ const FALLBACK_RESUME_HTML = `<div class="resume-ats">
         <tr>
           <td class="cat-label">Libraries</td>
           <td><span class="skill-chip"><i class="devicon-numpy-original"></i> NumPy</span> <span class="skill-chip"><i class="devicon-pandas-original"></i> Pandas</span> <span class="skill-chip"><i class="devicon-matplotlib-plain"></i> Matplotlib</span> <span class="skill-chip"><i class="devicon-pytorch-original"></i> TorchVision</span> <span class="skill-chip"><i class="devicon-keras-original"></i> Keras</span> <span class="skill-chip"><i class="devicon-pytorch-original"></i> PyTorch</span> <span class="skill-chip"><i class="devicon-scikitlearn-plain"></i> Scikit-learn</span> <span class="skill-chip"><i class="devicon-opencv-plain"></i> OpenCV</span> <span class="skill-chip">YOLOv11</span> <span class="skill-chip">OpenVINO</span> <span class="skill-chip">Roboflow</span> <span class="skill-chip">HuggingFace</span></td>
-          <td><span class="skill-chip"><i class="devicon-react-original"></i> React Native</span> <span class="skill-chip">Cordovova</span> <span class="skill-chip">Retrofit</span> <span class="skill-chip">RxJava</span> <span class="skill-chip"><i class="devicon-jetpackcompose-original"></i> Jetpack</span> <span class="skill-chip"><i class="devicon-kotlin-plain"></i> Kotlin Coroutines</span> <span class="skill-chip">Glide</span> <span class="skill-chip">Dagger Hilt</span></td>
+          <td><span class="skill-chip"><i class="devicon-react-original"></i> React Native</span> <span class="skill-chip">Cordova</span> <span class="skill-chip">Retrofit</span> <span class="skill-chip">RxJava</span> <span class="skill-chip"><i class="devicon-jetpackcompose-original"></i> Jetpack</span> <span class="skill-chip"><i class="devicon-kotlin-plain"></i> Kotlin Coroutines</span> <span class="skill-chip">Glide</span> <span class="skill-chip">Dagger Hilt</span></td>
           <td><span class="skill-chip"><i class="devicon-opengl-plain"></i> OpenGL</span> <span class="skill-chip">DirectX</span></td>
-          <td><span class="skill-chip"><i class="devicon-react-original"></i> React</span> <span class="skill-chip"><i class="devicon-vuejs-plain"></i> Vue.js</span> <span class="skill-chip"><i class="devicon-jquery-plain"></i> jQuery</span></td>
+          <td><span class="skill-chip"><i class="devicon-react-original"></i> React Native</span> <span class="skill-chip"><i class="devicon-javascript-plain"></i> JavaScript</span> <span class="skill-chip"><i class="devicon-vuejs-plain"></i> Vue.js</span> <span class="skill-chip"><i class="devicon-angularjs-plain"></i> Angular</span> <span class="skill-chip"><i class="devicon-jquery-plain"></i> jQuery</span> <span class="skill-chip"><i class="devicon-dot-net-plain"></i> ASP.NET</span></td>
         </tr>
         <tr>
           <td class="cat-label">Frameworks / Tools</td>
-          <td><span class="skill-chip"><i class="devicon-jupyter-plain"></i> Jupyter</span> <span class="skill-chip"><i class="devicon-anaconda-original"></i> Anaconda</span> <span class="skill-chip"><i class="devicon-docker-plain"></i> Docker</span> <span class="skill-chip">LangChain</span> <span class="skill-chip">LangFlow</span> <span class="skill-chip">LlamaIndex</span> <span class="skill-chip"><i class="devicon-tensorflow-original"></i> TensorFlow</span> <span class="skill-chip"><i class="devicon-amazonwebservices-plain-wordmark"></i> AWS</span> <span class="skill-chip"><i class="devicon-googlecloud-plain"></i> Google Cloud</span> <span class="skill-chip"><i class="devicon-git-plain"></i> Git</span></td>
+          <td><span class="skill-chip"><i class="devicon-jupyter-plain"></i> Jupyter</span> <span class="skill-chip"><i class="devicon-anaconda-original"></i> Anaconda</span> <span class="skill-chip"><i class="devicon-docker-plain"></i> Docker</span> <span class="skill-chip">LangChain</span> <span class="skill-chip">LangFlow</span> <span class="skill-chip">LlamaIndex</span> <span class="skill-chip"><i class="devicon-tensorflow-original"></i> TensorFlow</span> <span class="skill-chip"><i class="devicon-amazonwebservices-plain-wordmark"></i> AWS (EC2, Lambda)</span> <span class="skill-chip"><i class="devicon-googlecloud-plain"></i> Google Cloud</span> <span class="skill-chip">DigitalOcean</span> <span class="skill-chip"><i class="devicon-git-plain"></i> Git</span></td>
           <td><span class="skill-chip">Multi-OS Engine</span> <span class="skill-chip">Codename One</span> <span class="skill-chip">Appcelerator Titanium</span> <span class="skill-chip"><i class="devicon-ionic-original"></i> Ionic</span> <span class="skill-chip">Cordova</span> <span class="skill-chip">Capacitor</span> <span class="skill-chip">PWA Builder</span> <span class="skill-chip"><i class="devicon-git-plain"></i> Git</span></td>
-          <td><span class="skill-chip"><i class="devicon-unity-original"></i> Unity</span> <span class="skill-chip"><i class="devicon-blender-original"></i> Blender</span> <span class="skill-chip"><i class="devicon-godot-plain"></i> Godot</span> <span class="skill-chip"><i class="devicon-git-plain"></i> Git</span></td>
-          <td><span class="skill-chip"><i class="devicon-bootstrap-plain"></i> Bootstrap</span> <span class="skill-chip"><i class="devicon-tailwindcss-original"></i> Tailwind</span> <span class="skill-chip"><i class="devicon-django-plain"></i> Django</span> <span class="skill-chip"><i class="devicon-flask-original"></i> Flask</span> <span class="skill-chip"><i class="devicon-laravel-original"></i> Laravel</span> <span class="skill-chip">CodeIgniter</span> <span class="skill-chip">cPanel</span> <span class="skill-chip"><i class="devicon-git-plain"></i> Git</span></td>
+          <td><span class="skill-chip"><i class="devicon-unity-original"></i> Unity</span> <span class="skill-chip"><i class="devicon-blender-original"></i> Blender</span> <span class="skill-chip"><i class="devicon-git-plain"></i> Git</span></td>
+          <td><span class="skill-chip"><i class="devicon-bootstrap-plain"></i> Bootstrap</span> <span class="skill-chip"><i class="devicon-tailwindcss-original"></i> Tailwind</span> <span class="skill-chip"><i class="devicon-django-plain"></i> Django</span> <span class="skill-chip"><i class="devicon-flask-original"></i> Flask</span> <span class="skill-chip"><i class="devicon-laravel-original"></i> Laravel</span> <span class="skill-chip">CodeIgniter</span> <span class="skill-chip">cPanel</span> <span class="skill-chip"><i class="devicon-git-plain"></i> Git</span> <span class="skill-chip">Vercel</span></td>
         </tr>
         <tr>
           <td class="cat-label">Automation Workflow</td>
-          <td colspan="2"><strong>Low Code Automation Platforms:</strong> n8n, Zapier, Make, Smythos, Abacus.AI, Claude Code, Trigger.dev, Kiro</td>
-          <td colspan="2"><strong>Platforms:</strong> RingCentral, Synthesia, GHL, Slack, Delphi.AI, HuggingFace, Airtable, Lovable, 11labs</td>
+          <td colspan="2">
+            <strong>Low Code Platforms:</strong> n8n, Zapier, Make, SmythOS, Abacus.AI<br>
+            <strong>AI Coding Tools:</strong> Claude Code, Claude Design, Codex (GPT), Qwen, Ollama, GitHub Copilot, Letta Code
+          </td>
+          <td colspan="2">
+            <strong>Platforms:</strong> RingCentral, Synthesia, GHL, Slack, Delphi.AI, HuggingFace, Airtable, Lovable, 11labs<br>
+            <strong>Default Frameworks:</strong> MCP setup, Skills setup, Embedding, Transformers, Prompt Engineering, Multi-Agent Orchestration, Message Parsing, State Management
+          </td>
+        </tr>
+        <tr>
+          <td class="cat-label">CRM / Collab / Comms</td>
+          <td colspan="4">GoHighLevel &bull; HubSpot &bull; Zoho &bull; Google Workspace &bull; Jira / Atlassian &bull; Slack &bull; Contentful &bull; ClickUp &bull; MS Teams &nbsp;|&nbsp; <strong>Methodology:</strong> Scrum Master</td>
         </tr>
         <tr>
           <td class="cat-label">Soft Skills</td>

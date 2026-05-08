@@ -795,7 +795,7 @@ async function callAI(systemPrompt: string, userPrompt: string, maxTokens = 1000
         method: 'POST',
         headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'gpt-4o-mini', messages: [
+          model: 'gpt-5.5', messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ], temperature: 0.3, max_tokens: maxTokens,
@@ -6283,7 +6283,7 @@ Return JSON array only: [{"label": "exact question label", "answer": "your answe
         method: 'POST',
         headers: { 'Authorization': `Bearer ${OPENAI_KEY_SQ}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5.5',
           max_tokens: 1024,
           messages: [{ role: 'system', content: SCREENING_Q_SYSTEM }, { role: 'user', content: prompt }],
         }),
@@ -6808,7 +6808,7 @@ async function handleChatMessage(req: IncomingMessage, res: ServerResponse) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-5.5',
         max_tokens: 2048,
         tools: oaiTools,
         messages,
@@ -7153,22 +7153,43 @@ async function handleHeyGenUseAsSample(req: IncomingMessage, res: ServerResponse
   }
 }
 
-// ─── VoxCPM — local voice cloning ─────────────────────────────────────────
+// ─── VoxCPM — local voice cloning + HF Space fallback ──────────────────────
 const VOXCPM_LOCAL = process.env.VOXCPM_LOCAL_URL || 'http://localhost:7861'
+const VOXCPM_HF    = process.env.VOXCPM_HF_URL    || 'https://developer26-neuralyx-voxcpm.hf.space'
 
 // Persistent voice sample — saved to uploads dir, reloaded on restart
 const VOICE_SAMPLE_PATH = join(UPLOADS_DIR, '_voice_sample.wav')
 
-async function handleVoxCPMHealth(_req: IncomingMessage, res: ServerResponse) {
+// Probe a backend's /health and return parsed body when 2xx, else null.
+async function probeHealth(baseUrl: string, timeoutMs = 3000): Promise<Record<string, unknown> | null> {
   try {
-    const r = await fetch(`${VOXCPM_LOCAL}/health`, { signal: AbortSignal.timeout(3000) })
-    const data: any = await r.json()
+    const r = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(timeoutMs) })
+    if (!r.ok) return null
+    return (await r.json()) as Record<string, unknown>
+  } catch { return null }
+}
+
+async function handleVoxCPMHealth(_req: IncomingMessage, res: ServerResponse) {
+  // Local first → HF Space fallback. Surface which backend answered so the UI
+  // can show "✓ local" vs "✓ HF Space" vs "✗ both offline".
+  const local = await probeHealth(VOXCPM_LOCAL, 3000)
+  if (local) {
     res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ ok: true, ...data, url: VOXCPM_LOCAL }))
-  } catch (e: any) {
-    res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ ok: false, status: 'offline', error: e.message, url: VOXCPM_LOCAL }))
+    res.end(JSON.stringify({ ok: true, backend: 'local', ...local, url: VOXCPM_LOCAL }))
+    return
   }
+  const hf = await probeHealth(VOXCPM_HF, 5000)
+  if (hf) {
+    res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ ok: true, backend: 'hf', ...hf, url: VOXCPM_HF }))
+    return
+  }
+  res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({
+    ok: false, status: 'offline',
+    error: 'both local and HF Space unreachable',
+    tried: { local: VOXCPM_LOCAL, hf: VOXCPM_HF },
+  }))
 }
 
 async function handleVoiceSampleUpload(req: IncomingMessage, res: ServerResponse) {
@@ -7281,8 +7302,13 @@ async function handleVoxCPM(req: IncomingMessage, res: ServerResponse) {
 }
 
 // ─── SadTalker server-side job system ─────────────────────────────────────
+// Backend chain (used in order, first reachable wins):
+//   1. SADTALKER_LOCAL_URL  — your Docker container (heavy profile, opt-in)
+//   2. SADTALKER_HF_URL     — your HF Space Developer26/neuralyx-sadtalker
+//   3. SADTALKER_HF_FALLBACK — kevinwang676/sadtalker (3rd-party last resort)
 const SADTALKER_LOCAL = process.env.SADTALKER_LOCAL_URL || 'http://localhost:7860'
-const SADTALKER_HF    = process.env.SADTALKER_HF_URL || 'https://kevinwang676-sadtalker.hf.space'
+const SADTALKER_HF    = process.env.SADTALKER_HF_URL    || 'https://developer26-neuralyx-sadtalker.hf.space'
+const SADTALKER_HF_FALLBACK = process.env.SADTALKER_HF_FALLBACK_URL || 'https://kevinwang676-sadtalker.hf.space'
 type STStatus = 'queued' | 'uploading' | 'processing' | 'done' | 'error'
 interface STJob {
   status: STStatus
@@ -7352,24 +7378,42 @@ async function runSadTalkerJob(jobId: string, opts: {
   const job = sadTalkerJobs.get(jobId)!
   const update = (status: STStatus, log: string) => { job.status = status; job.log = log }
 
-  // Resolve backend: 'local' → always local, 'hf' → always HF, 'auto' → try local first
-  let useLocal = false
+  // Resolve backend chain: 'local' → only local; 'hf' → Developer26 → kevinwang676;
+  // 'auto' → local first, then Developer26, then kevinwang676.
+  // Each candidate is health-probed before commit so a sleeping space doesn't
+  // block ahead of a working one.
+  type Backend = { url: string; ws: string; label: string }
+  const candidates: Backend[] = []
   if (opts.backend === 'local') {
-    useLocal = true
+    candidates.push({ url: SADTALKER_LOCAL, ws: `ws://localhost:7860/queue/join`, label: 'local' })
   } else if (opts.backend === 'hf') {
-    useLocal = false
+    candidates.push({ url: SADTALKER_HF,          ws: `wss://developer26-neuralyx-sadtalker.hf.space/queue/join`, label: 'HF Developer26' })
+    candidates.push({ url: SADTALKER_HF_FALLBACK, ws: `wss://kevinwang676-sadtalker.hf.space/queue/join`,         label: 'HF kevinwang676 (fallback)' })
   } else {
-    useLocal = await checkLocalSadTalker()
+    if (await checkLocalSadTalker()) {
+      candidates.push({ url: SADTALKER_LOCAL, ws: `ws://localhost:7860/queue/join`, label: 'local' })
+    }
+    candidates.push({ url: SADTALKER_HF,          ws: `wss://developer26-neuralyx-sadtalker.hf.space/queue/join`, label: 'HF Developer26' })
+    candidates.push({ url: SADTALKER_HF_FALLBACK, ws: `wss://kevinwang676-sadtalker.hf.space/queue/join`,         label: 'HF kevinwang676 (fallback)' })
   }
 
-  const SADTALKER_BASE = useLocal ? SADTALKER_LOCAL : SADTALKER_HF
-  const wsUrl = useLocal
-    ? `ws://localhost:7860/queue/join`
-    : `wss://kevinwang676-sadtalker.hf.space/queue/join`
-
-  update('uploading', useLocal
-    ? '⚡ Local SadTalker — connecting…'
-    : '☁️ HuggingFace space — connecting…')
+  // Pick the first candidate whose root responds 200 (HF Spaces 404 their root
+  // when the build is missing — that signals "skip this one").
+  let chosen: Backend | null = null
+  for (const c of candidates) {
+    try {
+      const r = await fetch(c.url, { method: 'GET', signal: AbortSignal.timeout(5000) })
+      if (r.ok) { chosen = c; break }
+    } catch { /* try next */ }
+  }
+  if (!chosen) {
+    update('error', '❌ All SadTalker backends unreachable (local + Developer26 + kevinwang676)')
+    return
+  }
+  const SADTALKER_BASE = chosen.url
+  const wsUrl = chosen.ws
+  const useLocal = chosen.label === 'local'
+  update('uploading', `${useLocal ? '⚡ Local' : '☁️'} SadTalker — connecting via ${chosen.label}…`)
 
   const sessionHash = Math.random().toString(36).slice(2)
   let settled = false
@@ -7972,16 +8016,26 @@ async function handleRecordingsServeFile(_req: IncomingMessage, res: ServerRespo
 
 // ─── Gaze sidecar proxy ───────────────────────────────────────────────────
 const GAZE_SIDECAR_URL = process.env.GAZE_SIDECAR_URL || 'http://neuralyx-gaze:7880'
+const GAZE_HF_URL      = process.env.GAZE_HF_URL      || 'https://developer26-sted-gaze-onnx.hf.space'
+
+// Resolve the gaze backend at request time: prefer local, fall back to HF
+// Space when local /health isn't 2xx. Returns the URL the caller should hit.
+async function resolveGazeBackend(): Promise<{ url: string; backend: 'local' | 'hf' | 'none' }> {
+  const local = await probeHealth(GAZE_SIDECAR_URL, 2500)
+  if (local) return { url: GAZE_SIDECAR_URL, backend: 'local' }
+  const hf = await probeHealth(GAZE_HF_URL, 5000)
+  if (hf) return { url: GAZE_HF_URL, backend: 'hf' }
+  return { url: GAZE_SIDECAR_URL, backend: 'none' }
+}
 
 async function handleGazeStatus(_req: IncomingMessage, res: ServerResponse) {
-  try {
-    const r = await fetch(`${GAZE_SIDECAR_URL}/health`, { signal: AbortSignal.timeout(2500) })
-    if (!r.ok) return json(res, 200, { sidecar: 'down', status: r.status })
-    const data = await r.json().catch(() => ({}))
-    return json(res, 200, { sidecar: 'up', ...data })
-  } catch (e) {
-    return json(res, 200, { sidecar: 'down', error: e instanceof Error ? e.message : String(e) })
-  }
+  // Probe local first; if down, surface HF Space status so the UI shows
+  // "✓ HF" instead of generic "down".
+  const localData = await probeHealth(GAZE_SIDECAR_URL, 2500)
+  if (localData) return json(res, 200, { sidecar: 'up', backend: 'local', url: GAZE_SIDECAR_URL, ...localData })
+  const hfData = await probeHealth(GAZE_HF_URL, 5000)
+  if (hfData) return json(res, 200, { sidecar: 'up', backend: 'hf', url: GAZE_HF_URL, ...hfData })
+  return json(res, 200, { sidecar: 'down', tried: { local: GAZE_SIDECAR_URL, hf: GAZE_HF_URL } })
 }
 
 async function handleGazeProcessVideo(req: IncomingMessage, res: ServerResponse) {
@@ -7995,13 +8049,17 @@ async function handleGazeProcessVideo(req: IncomingMessage, res: ServerResponse)
     // (was being stripped here and silently defaulted to wangwilly).
     const incomingUrl = new URL(req.url || '/api/gaze/process-video', 'http://x')
     const qs = incomingUrl.search || ''
-    const r = await fetch(`${GAZE_SIDECAR_URL}/process-video${qs}`, {
+    const target = await resolveGazeBackend()
+    if (target.backend === 'none') {
+      return json(res, 502, { error: 'gaze sidecar offline (local + HF Space both unreachable)' })
+    }
+    const r = await fetch(`${target.url}/process-video${qs}`, {
       method: 'POST',
       headers: { 'Content-Type': ct },
       body: ab,
       signal: AbortSignal.timeout(600000),
     })
-    if (!r.ok) return json(res, 502, { error: `sidecar ${r.status}: ${await r.text()}` })
+    if (!r.ok) return json(res, 502, { error: `gaze ${target.backend} ${r.status}: ${await r.text()}` })
     const buf = Buffer.from(await r.arrayBuffer())
     res.writeHead(200, {
       ...CORS_HEADERS,
@@ -8020,13 +8078,17 @@ async function handleGazeCorrect(req: IncomingMessage, res: ServerResponse) {
     const raw = await readBodyRaw(req)
     if (!raw.length) return json(res, 400, { error: 'empty body' })
     const ab = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer
-    const r = await fetch(`${GAZE_SIDECAR_URL}/correct`, {
+    const target = await resolveGazeBackend()
+    if (target.backend === 'none') {
+      return json(res, 502, { error: 'gaze sidecar offline (local + HF Space both unreachable)' })
+    }
+    const r = await fetch(`${target.url}/correct`, {
       method: 'POST',
       headers: { 'Content-Type': req.headers['content-type'] || 'application/octet-stream' },
       body: ab,
       signal: AbortSignal.timeout(8000),
     })
-    if (!r.ok) return json(res, 502, { error: `sidecar ${r.status}: ${await r.text()}` })
+    if (!r.ok) return json(res, 502, { error: `gaze ${target.backend} ${r.status}: ${await r.text()}` })
     const buf = Buffer.from(await r.arrayBuffer())
     res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': r.headers.get('content-type') || 'image/jpeg', 'Content-Length': String(buf.length) })
     res.end(buf)

@@ -115,6 +115,110 @@ watch(gazeMode, (m) => { gazeCorrection.value = m !== 'off' }, { immediate: true
 // ONNX path probe — separately reports availability (model presence + WebGL EP)
 const gaze = useGazeCorrector()
 const onnxAvailable = gaze.available
+const onnxLoading = gaze.loading
+const onnxLoadError = gaze.loadError
+
+// ─── Live readiness probe for the gaze sidecar (server-side models) ────────
+// Probes localhost:7881/health and tracks whether wangwilly_l2sc, sted_onnx,
+// nvidia_maxine_cloud, nvidia_maxine_local are ready right now. Refreshed each
+// time the user picks a server-runtime model from the dropdown.
+const sidecarStatus = ref<{
+  loading: boolean
+  ok: boolean
+  raw: Record<string, unknown> | null
+  error: string | null
+}>({ loading: false, ok: false, raw: null, error: null })
+
+const GAZE_SIDECAR_URL =
+  (import.meta.env.VITE_GAZE_SIDECAR_URL as string | undefined) ||
+  'http://localhost:7881'
+
+async function probeGazeSidecar(): Promise<void> {
+  if (sidecarStatus.value.loading) return
+  sidecarStatus.value = { loading: true, ok: false, raw: null, error: null }
+  try {
+    const r = await fetch(`${GAZE_SIDECAR_URL}/health`, {
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!r.ok) {
+      sidecarStatus.value = {
+        loading: false,
+        ok: false,
+        raw: null,
+        error: `sidecar HTTP ${r.status}`,
+      }
+      return
+    }
+    const data = (await r.json()) as Record<string, unknown>
+    sidecarStatus.value = { loading: false, ok: true, raw: data, error: null }
+  } catch (e: unknown) {
+    sidecarStatus.value = {
+      loading: false,
+      ok: false,
+      raw: null,
+      error: e instanceof Error ? e.message : String(e),
+    }
+  }
+}
+
+// Re-probe whenever the user selects a server-runtime model. Also kick off
+// ONNX init when a browser-ONNX model is selected so the loading text moves.
+watch(
+  () => selectedGazeId.value,
+  async (id) => {
+    const m = getModel(id)
+    if (!m) return
+    if (m.runtime === 'server' || m.runtime === 'browser+server') {
+      void probeGazeSidecar()
+    }
+    if (m.pipelineMode === 'onnx' && !gaze.available.value && !gaze.loading.value) {
+      void gaze.init()
+    }
+  },
+  { immediate: true }
+)
+
+// Live one-line status under the dropdown — replaces the static `m.short` so
+// the user actually sees "Loading…", "Ready ✓", or "Sidecar offline" as they
+// switch models.
+const gazeBackendStatus = computed(() => {
+  const m = getModel(selectedGazeId.value)
+  if (!m) return ''
+  // Browser-only modes that need no asset load
+  if (['off', 'custom', 'landmark', 'auto'].includes(m.id)) {
+    return `✓ ${m.short}`
+  }
+  // Browser ONNX path (onnx, self_trained)
+  if (m.pipelineMode === 'onnx' && m.runtime === 'browser') {
+    if (onnxLoading.value) return '⏳ Loading ONNX model + ORT runtime…'
+    if (onnxLoadError.value) return `✗ ${onnxLoadError.value}`
+    if (onnxAvailable.value) return `✓ Ready — ${m.short}`
+    return '⏳ Initializing…'
+  }
+  // Server-side (wangwilly, sted, maxine_cloud, maxine_local)
+  if (m.runtime === 'server' || m.runtime === 'browser+server') {
+    if (sidecarStatus.value.loading) return '⏳ Probing gaze sidecar…'
+    if (sidecarStatus.value.error) return `✗ Sidecar offline — ${sidecarStatus.value.error}`
+    if (!sidecarStatus.value.ok || !sidecarStatus.value.raw) return '⏳ Probing gaze sidecar…'
+    const raw = sidecarStatus.value.raw as Record<string, { loaded?: boolean; available?: boolean; error?: string | null }>
+    // Each catalog id maps to a sidecar key
+    const sidecarKey: Record<string, string> = {
+      wangwilly: 'primary',
+      sted: 'sted',
+      nvidia_maxine_cloud: 'maxine_cloud',
+      nvidia_maxine_local: 'maxine_local',
+      auto: 'primary',
+    }
+    const key = sidecarKey[m.id]
+    const node = key ? raw[key] : null
+    if (!node) return `⚠ ${m.short}`
+    const loaded = node.loaded === true || node.available === true
+    if (loaded) return `✓ Ready (${key}) — ${m.short}`
+    if (node.error) return `✗ ${key} error: ${node.error}`
+    return `⚠ ${key} not loaded — ${m.short}`
+  }
+  return m.short
+})
 const bgImagePreview = ref<string | null>(null)
 const bgColor = ref('#0a1628')
 
@@ -265,6 +369,29 @@ let askVoiceMR: MediaRecorder | null = null
 let askVoiceStream: MediaStream | null = null
 let askVoiceChunks: Blob[] = []
 const WHISPER_LOCAL_URL = (import.meta.env.VITE_WHISPER_LOCAL_URL as string | undefined) || 'http://localhost:7870'
+const WHISPER_HF_URL    = (import.meta.env.VITE_WHISPER_HF_URL    as string | undefined) || 'https://developer26-neuralyx-whisper.hf.space'
+
+/** Try local Whisper, fall back to HF Space on any error / non-2xx. */
+async function transcribeWithFallback(fd: FormData): Promise<string> {
+  const candidates = [WHISPER_LOCAL_URL, WHISPER_HF_URL]
+  for (const base of candidates) {
+    try {
+      const res = await fetch(`${base.replace(/\/$/, '')}/transcribe`, {
+        method: 'POST', body: fd, signal: AbortSignal.timeout(30000),
+      })
+      if (res.ok) {
+        const data = (await res.json()) as { text?: string }
+        if (data.text) {
+          console.info(`[RecordTab] whisper hit ${base === WHISPER_LOCAL_URL ? 'local' : 'HF'} (${data.text.length} chars)`)
+          return data.text
+        }
+      }
+    } catch (e) {
+      console.warn(`[RecordTab] whisper ${base} failed:`, e instanceof Error ? e.message : e)
+    }
+  }
+  return ''
+}
 
 async function toggleAskVoice() {
   if (askVoiceRecording.value) { stopAskVoice(); return }
@@ -297,15 +424,11 @@ async function transcribeAskVoice(blob: Blob) {
   try {
     const fd = new FormData()
     fd.append('audio', blob, 'question.webm')
-    let text = ''
-    try {
-      // Local Whisper first
-      const res = await fetch(`${WHISPER_LOCAL_URL.replace(/\/$/, '')}/transcribe`, { method: 'POST', body: fd, signal: AbortSignal.timeout(30000) })
-      if (res.ok) { text = ((await res.json()) as { text?: string }).text || '' }
-    } catch { /* fall through to OpenAI */ }
+    // Local Whisper → HF Space fallback → OpenAI fallback
+    let text = await transcribeWithFallback(fd)
     if (!text) {
       const openaiKey = (import.meta.env.VITE_OPENAI_KEY as string | undefined) || localStorage.getItem('neuralyx_openai_key') || ''
-      if (!openaiKey) throw new Error('Local Whisper unreachable and no OpenAI key set.')
+      if (!openaiKey) throw new Error('Local Whisper + HF Space unreachable and no OpenAI key set.')
       const fd2 = new FormData()
       fd2.append('file', blob, 'question.webm'); fd2.append('model', 'whisper-1')
       const r2 = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -1259,7 +1382,13 @@ onBeforeUnmount(() => {
             </label>
             <input type="range" min="0" max="1" step="0.05" v-model.number="gazeStrength" class="w-full accent-cyber-cyan" />
           </div>
-          <p class="text-[10px] text-gray-500 leading-relaxed">{{ getModel(selectedGazeId)?.short }}</p>
+          <p class="text-[10px] leading-relaxed"
+             :class="{
+               'text-yellow-300': gazeBackendStatus.startsWith('⏳') || gazeBackendStatus.startsWith('⚠'),
+               'text-red-300':    gazeBackendStatus.startsWith('✗'),
+               'text-green-300':  gazeBackendStatus.startsWith('✓'),
+               'text-gray-500':   !gazeBackendStatus.match(/^[⏳⚠✗✓]/),
+             }">{{ gazeBackendStatus }}</p>
           <div v-if="gazeError && (gazeMode === 'landmark' || gazeMode === 'custom')" class="text-[11px] text-red-300">{{ gazeError }}</div>
           <div v-if="gazeMode === 'custom' && gazeReady" class="text-[11px] flex items-center gap-1.5"
                :class="gazeFaceDetected ? 'text-green-300' : 'text-yellow-300'">
